@@ -7,10 +7,8 @@ import {
   LayoutGrid, 
   List, 
   Search, 
-  ArrowLeft, 
   ChevronRight,
   Loader2,
-  AlertCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { createClient } from '@/utils/supabase/client';
@@ -18,6 +16,12 @@ import TaskBoard from '@/components/tasks/TaskBoard';
 import TaskList from '@/components/tasks/TaskList';
 import TaskSlideOver from '@/components/tasks/TaskSlideOver';
 import CreateTaskModal from '@/components/tasks/CreateTaskModal';
+
+interface Member {
+  id: string;
+  email: string;
+  display_name: string | null;
+}
 
 interface Project {
   id: string;
@@ -29,8 +33,9 @@ interface Project {
 interface Task {
   id: string;
   title: string;
-  status: string;
-  priority: string;
+  description: string | null;
+  status: 'todo' | 'in_progress' | 'done';
+  priority: 'low' | 'medium' | 'high' | 'critical';
   due_date: string | null;
   assignee_id: string | null;
   assignee?: {
@@ -45,7 +50,7 @@ export default function ProjectDetailPage() {
   const router = useRouter();
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [members, setMembers] = useState<any[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   
   // UI States
@@ -88,7 +93,7 @@ export default function ProjectDetailPage() {
           `)
           .eq('org_id', projData.org_id);
         
-        setMembers(memberData?.map(m => m.user) || []);
+        setMembers((memberData?.map(m => Array.isArray(m.user) ? m.user[0] : m.user) as Member[]) || []);
 
         // 3. Fetch Tasks with Assignee join
         const { data: taskData, error: taskError } = await supabase
@@ -99,7 +104,7 @@ export default function ProjectDetailPage() {
 
         if (taskError) throw taskError;
         setTasks((taskData as Task[]) || []);
-      } catch (err) {
+      } catch {
         toast.error('Veriler yüklenirken bir hata oluştu.');
       } finally {
         setLoading(false);
@@ -110,7 +115,7 @@ export default function ProjectDetailPage() {
   }, [id, router]);
 
   /* ── Optimistic Updates & Handlers ───────────────────────── */
-  const handleUpdateTaskStatus = async (taskId: string, newStatus: string) => {
+  const handleUpdateTaskStatus = async (taskId: string, newStatus: 'todo' | 'in_progress' | 'done') => {
     // 1. Save old state for rollback
     const previousTasks = [...tasks];
     
@@ -229,7 +234,6 @@ export default function ProjectDetailPage() {
         {viewMode === 'kanban' ? (
           <TaskBoard
             tasks={filteredTasks}
-            members={members}
             onOpenTask={(task) => {
               setSelectedTask(task);
               setIsSlideOverOpen(true);
@@ -239,7 +243,6 @@ export default function ProjectDetailPage() {
         ) : (
           <TaskList
             tasks={filteredTasks}
-            members={members}
             onOpenTask={(task) => {
               setSelectedTask(task);
               setIsSlideOverOpen(true);
@@ -266,6 +269,7 @@ export default function ProjectDetailPage() {
       />
 
       <TaskSlideOver
+        key={selectedTask?.id}
         task={selectedTask}
         members={members}
         isOpen={isSlideOverOpen}

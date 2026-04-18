@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
+import AIAssistantWidget from '@/components/ai/AIAssistantWidget';
 import { X } from 'lucide-react';
 
 export default function DashboardLayout({
@@ -53,11 +54,14 @@ export default function DashboardLayout({
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar onMenuClick={() => setIsSidebarOpen(true)} />
-        <main className="flex-1 overflow-y-auto p-4 lg:p-8 scroll-smooth">
+        <main className="flex-1 overflow-y-auto p-4 lg:p-8 scroll-smooth relative">
           <div className="max-w-7xl mx-auto">
             {children}
           </div>
         </main>
+        
+        {/* AI Assistant FAB and Panel */}
+        <AIAssistantWidget />
       </div>
     </div>
   );

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, FolderOpen, Loader2 } from 'lucide-react';
+import { Plus, FolderOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { createClient } from '@/utils/supabase/client';
 import { useUserStore } from '@/store/useUserStore';
@@ -184,7 +184,7 @@ export default function ProjectsPage() {
                 Henüz bir proje oluşturmadınız.
               </p>
               <p className="text-xs text-gray-400 mt-1">
-                Sağ üstteki "+ Yeni Proje" butonuyla başlayın.
+                Sağ üstteki &quot;+ Yeni Proje&quot; butonuyla başlayın.
               </p>
             </div>
             <button

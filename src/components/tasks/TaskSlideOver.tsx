@@ -1,17 +1,35 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { X, Calendar, Type, AlignLeft, Flag, Save, Trash2, Loader2, User } from 'lucide-react';
+import { useState } from 'react';
+import { X, Calendar, Type, AlignLeft, Flag, Save, Trash2, Loader2, User as UserIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { createClient } from '@/utils/supabase/client';
 
+/* ── Tipler ─────────────────────────────────────────────────── */
+interface Member {
+  id: string;
+  email: string;
+  display_name: string | null;
+}
+
+interface Task {
+  id: string;
+  title: string;
+  description: string | null;
+  status: 'todo' | 'in_progress' | 'done';
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  due_date: string | null;
+  assignee_id: string | null;
+  assignee?: Member | null;
+}
+
 /* ── Props ──────────────────────────────────────────────────── */
 interface TaskSlideOverProps {
-  task: any | null;
-  members: any[];
+  task: Task | null;
+  members: Member[];
   isOpen: boolean;
   onClose: () => void;
-  onUpdated: (updatedTask: any) => void;
+  onUpdated: (updatedTask: Task) => void;
   onDeleted: (taskId: string) => void;
 }
 
@@ -23,24 +41,13 @@ export default function TaskSlideOver({
   onUpdated,
   onDeleted,
 }: TaskSlideOverProps) {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [priority, setPriority] = useState('medium');
-  const [dueDate, setDueDate] = useState('');
-  const [assigneeId, setAssigneeId] = useState<string | null>(null);
+  const [title, setTitle] = useState(task?.title || '');
+  const [description, setDescription] = useState(task?.description || '');
+  const [priority, setPriority] = useState<Task['priority']>((task?.priority as Task['priority']) || 'medium');
+  const [dueDate, setDueDate] = useState(task?.due_date || '');
+  const [assigneeId, setAssigneeId] = useState<string | null>(task?.assignee_id || null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-
-  // Sync state with task prop
-  useEffect(() => {
-    if (task) {
-      setTitle(task.title || '');
-      setDescription(task.description || '');
-      setPriority(task.priority || 'medium');
-      setDueDate(task.due_date || '');
-      setAssigneeId(task.assignee_id || null);
-    }
-  }, [task]);
 
   if (!task) return null;
 
@@ -69,7 +76,7 @@ export default function TaskSlideOver({
       if (error) throw error;
 
       toast.success('Değişiklikler kaydedildi ✓');
-      onUpdated(data);
+      onUpdated(data as Task);
     } catch {
       toast.error('Girişler kaydedilirken bir hata oluştu.');
     } finally {
@@ -86,7 +93,7 @@ export default function TaskSlideOver({
       ...task, 
       assignee_id: newId, 
       assignee: selectedMember ? { id: selectedMember.id, email: selectedMember.email, display_name: selectedMember.display_name } : null 
-    });
+    } as Task);
 
     // Persistent update
     await handleSave(newId);
@@ -130,20 +137,20 @@ export default function TaskSlideOver({
       >
         <div className="flex flex-col h-full">
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 bg-gray-50/50">
-            <h2 className="text-sm font-bold text-gray-900 uppercase tracking-widest">
+          <div className="flex items-center justify-between px-4 sm:px-6 py-4 sm:py-5 border-b border-gray-100 bg-gray-50/50 flex-shrink-0">
+            <h2 className="text-xs sm:text-sm font-bold text-gray-900 uppercase tracking-widest">
               Görev Detayı
             </h2>
             <button
               onClick={onClose}
-              className="p-2 text-gray-400 hover:text-gray-700 hover:bg-white rounded-xl shadow-sm ring-1 ring-gray-200 transition-all"
+              className="p-1.5 sm:p-2 text-gray-400 hover:text-gray-700 hover:bg-white rounded-xl shadow-sm ring-1 ring-gray-200 transition-all flex-shrink-0"
             >
-              <X size={20} />
+              <X size={18} />
             </button>
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-8">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-8">
             {/* Title Section */}
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-gray-400">
@@ -154,7 +161,7 @@ export default function TaskSlideOver({
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full text-lg font-bold text-gray-900 border-0 p-0 focus:ring-0 placeholder-gray-300"
+                className="w-full text-lg font-bold text-gray-900 border-0 p-0 focus:ring-0 placeholder-gray-300 bg-transparent"
                 placeholder="Görev Başlığı..."
               />
             </div>
@@ -166,7 +173,7 @@ export default function TaskSlideOver({
                 <span className="text-[10px] font-bold uppercase tracking-wider">Açıklama</span>
               </div>
               <textarea
-                value={description}
+                value={description || ''}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={6}
                 className="w-full text-sm text-gray-600 border border-gray-100 rounded-xl p-4 bg-gray-50/50 focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/5 transition-all outline-none resize-none placeholder-gray-300"
@@ -177,7 +184,7 @@ export default function TaskSlideOver({
             {/* Assignee Section */}
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-gray-400">
-                <User size={16} />
+                <UserIcon size={16} />
                 <span className="text-[10px] font-bold uppercase tracking-wider">Atanan Kişi</span>
               </div>
               <select
@@ -195,7 +202,7 @@ export default function TaskSlideOver({
             </div>
 
             {/* Meta Grid */}
-            <div className="grid grid-cols-2 gap-6 pt-2">
+            <div className="grid grid-cols-2 gap-4 sm:gap-6 pt-2">
               <div className="space-y-3">
                 <div className="flex items-center gap-2 text-gray-400">
                   <Flag size={16} />
@@ -203,7 +210,7 @@ export default function TaskSlideOver({
                 </div>
                 <select
                   value={priority}
-                  onChange={(e) => setPriority(e.target.value)}
+                  onChange={(e) => setPriority(e.target.value as Task['priority'])}
                   className="w-full text-xs font-bold p-3 border border-gray-100 rounded-xl bg-gray-50/50 focus:bg-white focus:border-indigo-400 transition-all outline-none appearance-none"
                 >
                   <option value="low">Düşük</option>
@@ -229,11 +236,11 @@ export default function TaskSlideOver({
           </div>
 
           {/* Footer Actions */}
-          <div className="p-6 bg-gray-50/80 border-t border-gray-100 flex items-center gap-3">
+          <div className="p-4 sm:p-6 bg-gray-50/80 border-t border-gray-100 flex items-center gap-3 flex-shrink-0">
             <button
               onClick={handleDelete}
               disabled={deleting}
-              className="p-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors border border-red-100"
+              className="p-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors border border-red-100 bg-white"
               title="Görevi Sil"
             >
               {deleting ? <Loader2 size={18} className="animate-spin" /> : <Trash2 size={18} />}
@@ -241,10 +248,10 @@ export default function TaskSlideOver({
             <button
               onClick={() => handleSave()}
               disabled={saving}
-              className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 disabled:bg-indigo-300 transition-all"
+              className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 disabled:bg-indigo-300 transition-all active:scale-95"
             >
               {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-              {saving ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
+              {saving ? 'Kaydediliyor...' : 'Kaydet'}
             </button>
           </div>
         </div>

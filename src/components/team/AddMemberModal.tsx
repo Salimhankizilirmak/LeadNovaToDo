@@ -15,12 +15,23 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
+/* ── Tipler ─────────────────────────────────────────────────── */
+interface TeamMember {
+  user_id: string;
+  role: 'admin' | 'member';
+  user: {
+    id: string;
+    email: string;
+    display_name: string | null;
+  };
+}
+
 /* ── Props ──────────────────────────────────────────────────── */
 interface AddMemberModalProps {
   orgId: string;
   isOpen: boolean;
   onClose: () => void;
-  onAdded: (newMember: any) => void;
+  onAdded: (newMember: TeamMember) => void;
 }
 
 export default function AddMemberModal({
@@ -82,10 +93,11 @@ export default function AddMemberModal({
       if (insertError) throw insertError;
 
       toast.success('Kullanıcı ekibe katıldı ✓');
-      const newMember = {
+      const newMember: TeamMember = {
         user_id: targetUser.id,
         role: 'member',
         user: {
+          id: targetUser.id,
           email: targetUser.email,
           display_name: targetUser.display_name
         }
@@ -93,7 +105,7 @@ export default function AddMemberModal({
       onAdded(newMember);
       reset();
       onClose();
-    } catch (err) {
+    } catch {
       toast.error('Kullanıcı eklenirken teknik bir hata oluştu.');
     } finally {
       setSubmitting(false);

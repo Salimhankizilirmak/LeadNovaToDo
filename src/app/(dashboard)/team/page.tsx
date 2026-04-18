@@ -7,7 +7,6 @@ import {
   Shield, 
   User, 
   Mail, 
-  Loader2,
   CheckCircle2,
   AlertCircle
 } from 'lucide-react';
@@ -112,8 +111,13 @@ export default function TeamPage() {
           .eq('org_id', currentMember.org_id);
 
         if (listError) throw listError;
-        setMembers(memberList as any[]);
-      } catch (err) {
+        const formattedMembers = (memberList?.map(m => ({
+          ...m,
+          user: Array.isArray(m.user) ? m.user[0] : m.user
+        })) as TeamMember[]) || [];
+
+        setMembers(formattedMembers);
+      } catch {
         toast.error('Ekip listesi yüklenirken bir hata oluştu.');
       } finally {
         setLoading(false);

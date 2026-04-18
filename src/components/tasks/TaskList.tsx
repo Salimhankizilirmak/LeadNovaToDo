@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckCircle2, Circle, Calendar, Flag, User as UserIcon } from 'lucide-react';
+import { CheckCircle2, Circle, Calendar, User as UserIcon } from 'lucide-react';
 
 /* ── Sabitler ─────────────────────────────────────────────── */
 const priorityConfig: Record<string, { label: string; className: string; dotColor: string }> = {
@@ -16,15 +16,32 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   done: { label: 'Tamamlandı', className: 'bg-emerald-50 text-emerald-700' },
 };
 
-/* ── Ana Bileşen ───────────────────────────────────────────── */
-interface TaskListProps {
-  tasks: any[];
-  members: any[];
-  onOpenTask: (task: any) => void;
-  onToggleDone: (taskId: string, currentStatus: string) => void;
+/* ── Tipler ─────────────────────────────────────────────────── */
+interface Member {
+  id: string;
+  email: string;
+  display_name: string | null;
 }
 
-export default function TaskList({ tasks, members, onOpenTask, onToggleDone }: TaskListProps) {
+interface Task {
+  id: string;
+  title: string;
+  description: string | null;
+  status: 'todo' | 'in_progress' | 'done';
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  due_date: string | null;
+  assignee_id: string | null;
+  assignee?: Member | null;
+}
+
+/* ── Ana Bileşen ───────────────────────────────────────────── */
+interface TaskListProps {
+  tasks: Task[];
+  onOpenTask: (task: Task) => void;
+  onToggleDone: (taskId: string, currentStatus: 'todo' | 'in_progress' | 'done') => void;
+}
+
+export default function TaskList({ tasks, onOpenTask, onToggleDone }: TaskListProps) {
   if (tasks.length === 0) {
     return (
       <div className="bg-white rounded-3xl border border-gray-100 p-20 flex flex-col items-center justify-center text-center gap-4">
@@ -95,7 +112,7 @@ export default function TaskList({ tasks, members, onOpenTask, onToggleDone }: T
 
                   {/* Assignee */}
                   <td className="px-6 py-4 hidden sm:table-cell">
-                    {initials ? (
+                    {initials && assignee ? (
                       <div 
                         className="w-7 h-7 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-700 shadow-sm"
                         title={`${assignee.display_name || 'Kullanıcı'} (${assignee.email})`}

@@ -35,7 +35,7 @@ export default function Sidebar() {
       setUser(null);
       toast.success('Başarıyla çıkış yapıldı');
       window.location.href = '/login';
-    } catch (error) {
+    } catch {
       toast.error('Çıkış yapılırken bir hata oluştu');
     }
   };

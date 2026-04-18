@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowRight, ArrowLeft, MoreVertical, Calendar, Flag, User } from 'lucide-react';
+import { ArrowRight, ArrowLeft, MoreVertical, Calendar, User } from 'lucide-react';
 
 /* ── Sabitler ─────────────────────────────────────────────── */
 const COLUMNS = [
@@ -16,11 +16,29 @@ const priorityConfig: Record<string, { label: string; className: string }> = {
   critical: { label: 'Kritik', className: 'text-red-700 bg-red-50' },
 };
 
+/* ── Tipler ─────────────────────────────────────────────────── */
+interface Member {
+  id: string;
+  email: string;
+  display_name: string | null;
+}
+
+interface Task {
+  id: string;
+  title: string;
+  description: string | null;
+  status: 'todo' | 'in_progress' | 'done';
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  due_date: string | null;
+  assignee_id: string | null;
+  assignee?: Member | null;
+}
+
 /* ── Görev Kartı ───────────────────────────────────────────── */
 interface TaskCardProps {
-  task: any;
-  onOpen: (task: any) => void;
-  onMove: (taskId: string, newStatus: string) => void;
+  task: Task;
+  onOpen: (task: Task) => void;
+  onMove: (taskId: string, newStatus: 'todo' | 'in_progress' | 'done') => void;
 }
 
 function KanbanCard({ task, onOpen, onMove }: TaskCardProps) {
@@ -65,7 +83,7 @@ function KanbanCard({ task, onOpen, onMove }: TaskCardProps) {
         {/* Quick Actions Bar */}
         <div className="pt-3 border-t border-gray-50 flex items-center justify-between mt-auto">
           <div className="flex items-center -space-x-1 overflow-hidden">
-            {initials ? (
+            {initials && assignee ? (
               <div 
                 className="w-6 h-6 rounded-full border-2 border-white bg-indigo-100 flex items-center justify-center text-[9px] font-black text-indigo-700 shadow-sm"
                 title={`${assignee.display_name || 'Kullanıcı'} (${assignee.email})`}
@@ -116,10 +134,10 @@ function KanbanCard({ task, onOpen, onMove }: TaskCardProps) {
 
 /* ── Ana Board ─────────────────────────────────────────────── */
 interface TaskBoardProps {
-  tasks: any[];
-  members: any[];
-  onOpenTask: (task: any) => void;
-  onMoveTask: (taskId: string, newStatus: string) => void;
+  tasks: Task[];
+  members?: Member[];
+  onOpenTask: (task: Task) => void;
+  onMoveTask: (taskId: string, newStatus: 'todo' | 'in_progress' | 'done') => void;
 }
 
 export default function TaskBoard({ tasks, onOpenTask, onMoveTask }: TaskBoardProps) {
