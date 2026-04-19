@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { X, Loader2, ClipboardCheck } from 'lucide-react';
 import { useUser } from '@clerk/nextjs';
 import { useSupabase } from '@/hooks/use-supabase';
+import { createTaskAction } from '@/app/actions/tasks';
 import { Task, Member } from '@/types/task';
 
 /* ── Zod Şeması ─────────────────────────────────────────────── */
@@ -62,29 +63,20 @@ export default function CreateTaskModal({
   const onSubmit = async (values: FormValues) => {
     if (!userId) return;
     setSubmitting(true);
-
     try {
-      const supabase = await getSupabase();
-      
-      const { data, error } = await supabase
-        .from('tasks')
-        .insert({
-          title: values.title,
-          description: values.description || "", // Boş string garantisi (400 Hatası Fix)
-          priority: values.priority,
-          project_id: projectId,
-          org_id: orgId,
-          assignee_id: values.assignee_id || null,
-          created_by: userId,
-          status: 'todo',
-        })
-        .select('*')
-        .single();
+      const result = await createTaskAction({
+        title: values.title,
+        description: values.description,
+        priority: values.priority,
+        projectId: projectId,
+        orgId: orgId,
+        assigneeId: values.assignee_id,
+      });
 
-      if (error) throw error;
+      if (!result.success) throw new Error('Görev oluşturulamadı');
 
-      toast.success('Görev başarıyla eklendi ✓');
-      onCreated(data);
+      toast.success('Görev başarıyla eklendi ve bildirim gönderildi ✓');
+      onCreated(result.task as any);
       onClose();
     } catch (err: any) {
       console.error('GÖREV OLUŞTURMA HATASI:', err);

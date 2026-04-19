@@ -61,7 +61,8 @@ CREATE POLICY "Members can see their organization"
 ON public.organizations FOR SELECT
 TO authenticated
 USING (
-  id IN (SELECT org_id FROM public.org_members WHERE user_id = public.requesting_user_id())
+  id IN (SELECT org_id FROM public.org_members WHERE user_id = public.requesting_user_id()) OR
+  owner_id = public.requesting_user_id()
 );
 
 -- PROJECTS: Organizasyon üyeleri projeleri görebilir ve oluşturabilir
@@ -77,19 +78,43 @@ ON public.projects FOR INSERT
 TO authenticated
 WITH CHECK (org_id = public.requesting_org_id());
 
--- TASKS: Organizasyon üyeleri görevleri görebilir ve oluşturabilir
+-- TASKS: Organizasyon üyeleri görevleri görebilir; ayrıca kullanıcılar kendilerine atanan görevleri her durumda görebilir.
 DROP POLICY IF EXISTS "Members can see tasks" ON public.tasks;
 CREATE POLICY "Members can see tasks"
 ON public.tasks FOR SELECT
 TO authenticated
-USING (org_id = public.requesting_org_id());
+USING (
+  org_id = public.requesting_org_id() OR 
+  assignee_id = public.requesting_user_id() OR
+  created_by = public.requesting_user_id()
+);
 
 DROP POLICY IF EXISTS "Members can insert tasks" ON public.tasks;
 CREATE POLICY "Members can insert tasks"
 ON public.tasks FOR INSERT
 TO authenticated
 WITH CHECK (
-  org_id = public.requesting_org_id() AND
+  (org_id = public.requesting_org_id() OR public.requesting_org_id() IS NULL) AND
+  created_by = public.requesting_user_id()
+);
+
+-- UPDATE ve DELETE yetkileri de eklenmeli
+DROP POLICY IF EXISTS "Users can update their tasks" ON public.tasks;
+CREATE POLICY "Users can update their tasks"
+ON public.tasks FOR UPDATE
+TO authenticated
+USING (
+  org_id = public.requesting_org_id() OR 
+  created_by = public.requesting_user_id() OR
+  assignee_id = public.requesting_user_id()
+);
+
+DROP POLICY IF EXISTS "Users can delete their tasks" ON public.tasks;
+CREATE POLICY "Users can delete their tasks"
+ON public.tasks FOR DELETE
+TO authenticated
+USING (
+  org_id = public.requesting_org_id() OR 
   created_by = public.requesting_user_id()
 );
 
