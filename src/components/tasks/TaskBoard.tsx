@@ -1,6 +1,7 @@
 'use client';
 
 import { ArrowRight, ArrowLeft, MoreVertical, Calendar, User } from 'lucide-react';
+import { Task, Member } from '@/types/task';
 
 /* ── Sabitler ─────────────────────────────────────────────── */
 const COLUMNS = [
@@ -15,26 +16,6 @@ const priorityConfig: Record<string, { label: string; className: string }> = {
   high: { label: 'Yüksek', className: 'text-orange-700 bg-orange-50' },
   critical: { label: 'Kritik', className: 'text-red-700 bg-red-50' },
 };
-
-/* ── Tipler ─────────────────────────────────────────────────── */
-interface Member {
-  id: string;
-  email: string;
-  display_name: string | null;
-}
-
-interface Task {
-  id: string;
-  title: string;
-  description: string | null;
-  status: 'todo' | 'in_progress' | 'done';
-  priority: 'low' | 'medium' | 'high' | 'critical';
-  due_date: string | null;
-  assignee_id: string | null;
-  assignee?: Member | null;
-  created_by: string;
-  org_id: string;
-}
 
 /* ── Görev Kartı ───────────────────────────────────────────── */
 interface TaskCardProps {

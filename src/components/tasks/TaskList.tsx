@@ -1,6 +1,7 @@
 'use client';
 
 import { CheckCircle2, Circle, Calendar, User as UserIcon } from 'lucide-react';
+import { Task, Member } from '@/types/task';
 
 /* ── Sabitler ─────────────────────────────────────────────── */
 const priorityConfig: Record<string, { label: string; className: string; dotColor: string }> = {
@@ -15,26 +16,6 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   in_progress: { label: 'Devam Ediyor', className: 'bg-indigo-50 text-indigo-700' },
   done: { label: 'Tamamlandı', className: 'bg-emerald-50 text-emerald-700' },
 };
-
-/* ── Tipler ─────────────────────────────────────────────────── */
-interface Member {
-  id: string;
-  email: string;
-  display_name: string | null;
-}
-
-interface Task {
-  id: string;
-  title: string;
-  description: string | null;
-  status: 'todo' | 'in_progress' | 'done';
-  priority: 'low' | 'medium' | 'high' | 'critical';
-  due_date: string | null;
-  assignee_id: string | null;
-  assignee?: Member | null;
-  created_by: string;
-  org_id: string;
-}
 
 /* ── Ana Bileşen ───────────────────────────────────────────── */
 interface TaskListProps {

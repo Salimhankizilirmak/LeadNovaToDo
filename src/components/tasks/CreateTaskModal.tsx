@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { X, Loader2, ClipboardCheck } from 'lucide-react';
 import { createClerkClient } from '@/utils/supabase/client';
 import { useUser, useAuth } from '@clerk/nextjs';
+import { Task, Member } from '@/types/task';
 
 /* ── Zod Şeması ─────────────────────────────────────────────── */
 const schema = z.object({
@@ -18,26 +19,6 @@ const schema = z.object({
 });
 
 type FormValues = z.infer<typeof schema>;
-
-/* ── Tipler ─────────────────────────────────────────────────── */
-interface Member {
-  id: string;
-  email?: string;
-  display_name?: string | null;
-}
-
-interface Task {
-  id: string;
-  title: string;
-  description: string | null;
-  status: 'todo' | 'in_progress' | 'done';
-  priority: 'low' | 'medium' | 'high' | 'critical';
-  due_date: string | null;
-  project_id: string;
-  assignee_id: string | null;
-  created_by: string;
-  org_id: string;
-}
 
 /* ── Props ──────────────────────────────────────────────────── */
 interface CreateTaskModalProps {

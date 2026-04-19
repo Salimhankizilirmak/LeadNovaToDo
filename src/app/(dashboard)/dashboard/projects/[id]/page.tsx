@@ -17,29 +17,12 @@ import TaskBoard from '@/components/tasks/TaskBoard';
 import TaskList from '@/components/tasks/TaskList';
 import TaskSlideOver from '@/components/tasks/TaskSlideOver';
 import CreateTaskModal from '@/components/tasks/CreateTaskModal';
-
-interface Member {
-  id: string;
-  email?: string;
-  display_name?: string | null;
-}
+import { Task, Member } from '@/types/task';
 
 interface Project {
   id: string;
   name: string;
   color: string;
-  org_id: string;
-}
-
-interface Task {
-  id: string;
-  title: string;
-  description: string | null;
-  status: 'todo' | 'in_progress' | 'done';
-  priority: 'low' | 'medium' | 'high' | 'critical';
-  due_date: string | null;
-  assignee_id: string | null;
-  created_by: string;
   org_id: string;
 }
 

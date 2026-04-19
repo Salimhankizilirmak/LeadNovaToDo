@@ -5,25 +5,7 @@ import { X, Calendar, Type, AlignLeft, Flag, Save, Trash2, Loader2, User as User
 import { toast } from 'sonner';
 import { createClerkClient } from '@/utils/supabase/client';
 import { useAuth } from '@clerk/nextjs';
-
-/* ── Tipler ─────────────────────────────────────────────────── */
-interface Member {
-  id: string;
-  email?: string;
-  display_name?: string | null;
-}
-
-interface Task {
-  id: string;
-  title: string;
-  description: string | null;
-  status: 'todo' | 'in_progress' | 'done';
-  priority: 'low' | 'medium' | 'high' | 'critical';
-  due_date: string | null;
-  assignee_id: string | null;
-  created_by: string;
-  org_id: string;
-}
+import { Task, Member } from '@/types/task';
 
 /* ── Props ──────────────────────────────────────────────────── */
 interface TaskSlideOverProps {
