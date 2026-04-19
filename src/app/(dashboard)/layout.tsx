@@ -63,6 +63,9 @@ export default function DashboardLayout({
         
         {/* AI Assistant FAB and Panel */}
         <AIAssistantWidget />
+
+        {/* Auth Sync Trigger */}
+        <UserSyncTrigger />
       </div>
     </div>
   );
