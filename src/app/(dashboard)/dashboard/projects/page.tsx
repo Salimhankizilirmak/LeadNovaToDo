@@ -142,7 +142,7 @@ export default function ProjectsPage() {
     };
 
     fetchProjects();
-  }, [userId]);
+  }, [userId, getSupabase]);
 
   const handleProjectCreated = (newProject: Project) => {
     setProjects((prev) => [newProject, ...prev]);

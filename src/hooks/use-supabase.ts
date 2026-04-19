@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { createClerkClient } from '@/utils/supabase/client';
 
@@ -10,7 +11,7 @@ import { createClerkClient } from '@/utils/supabase/client';
 export function useSupabase() {
   const { getToken } = useAuth();
 
-  const getSupabase = async () => {
+  const getSupabase = useCallback(async () => {
     // Clerk'ten Supabase için taze token al (Refresh token otomatik kullanılır)
     const token = await getToken({ template: 'supabase' });
     
@@ -20,7 +21,7 @@ export function useSupabase() {
 
     // Taze token ile yetkilendirilmiş istemciyi oluştur ve döndür
     return createClerkClient(token);
-  };
+  }, [getToken]);
 
   return { getSupabase };
 }
