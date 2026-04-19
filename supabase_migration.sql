@@ -98,7 +98,7 @@ WITH CHECK (
   created_by = public.requesting_user_id()
 );
 
--- UPDATE ve DELETE yetkileri de eklenmeli
+-- UPDATE ve DELETE yetkileri
 DROP POLICY IF EXISTS "Users can update their tasks" ON public.tasks;
 CREATE POLICY "Users can update their tasks"
 ON public.tasks FOR UPDATE
@@ -108,6 +108,13 @@ USING (
   created_by = public.requesting_user_id() OR
   assignee_id = public.requesting_user_id()
 );
+
+-- Özellikle 'Atanan Kişi' için ek yetki (Garantilemek için)
+DROP POLICY IF EXISTS "Assignees can update their tasks" ON public.tasks;
+CREATE POLICY "Assignees can update their tasks"
+ON public.tasks FOR UPDATE
+TO authenticated
+USING (assignee_id = public.requesting_user_id());
 
 DROP POLICY IF EXISTS "Users can delete their tasks" ON public.tasks;
 CREATE POLICY "Users can delete their tasks"

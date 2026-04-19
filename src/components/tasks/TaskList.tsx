@@ -136,9 +136,20 @@ export default function TaskList({ tasks, onOpenTask, onToggleDone }: TaskListPr
 
                   {/* Status Badge */}
                   <td className="px-6 py-4 text-right">
-                    <span className={`inline-block text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full ${status.className}`}>
-                      {status.label}
-                    </span>
+                    <select
+                      value={task.status}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => onToggleDone(task.id, e.target.value as any)}
+                      className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border outline-none cursor-pointer transition-all ${
+                        task.status === 'todo' ? 'bg-gray-100 text-gray-700 border-gray-200' :
+                        task.status === 'in_progress' ? 'bg-indigo-50 text-indigo-700 border-indigo-100' :
+                        'bg-emerald-50 text-emerald-700 border-emerald-100'
+                      }`}
+                    >
+                      <option value="todo">YAPILACAK</option>
+                      <option value="in_progress">DEVAM EDİYOR</option>
+                      <option value="done">TAMAMLANDI</option>
+                    </select>
                   </td>
                 </tr>
               );

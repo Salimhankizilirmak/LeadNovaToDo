@@ -11,9 +11,9 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useUser } from '@clerk/nextjs';
+import { useUser, useOrganization } from '@clerk/nextjs';
 import { useSupabase } from '@/hooks/use-supabase';
-import AddMemberModal from '@/components/team/AddMemberModal';
+import InviteMemberModal from '@/components/team/InviteMemberModal';
 
 /* ── Tipler ─────────────────────────────────────────────────── */
 interface TeamMember {
@@ -65,12 +65,12 @@ function TeamSkeleton() {
 /* ── Ana Sayfa ───────────────────────────────────────────── */
 export default function TeamPage() {
   const { user } = useUser();
+  const { organization, membership } = useOrganization();
   const { getSupabase } = useSupabase();
   const userId = user?.id ?? null;
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [orgId, setOrgId] = useState<string | null>(null);
-  const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'member'>('member');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
@@ -94,7 +94,6 @@ export default function TeamPage() {
         }
 
         setOrgId(currentMember.org_id);
-        setCurrentUserRole(currentMember.role);
 
         // 2. Tüm üyeleri çek
         const { data: memberList, error: listError } = await supabase
@@ -150,7 +149,7 @@ export default function TeamPage() {
 
   if (loading) return <TeamSkeleton />;
 
-  const isAdmin = currentUserRole === 'admin';
+  const isAdmin = membership?.role === 'org:admin';
 
   return (
     <div className="space-y-6">
@@ -255,15 +254,11 @@ export default function TeamPage() {
         )}
       </div>
 
-      {/* Add Member Modal */}
-      {orgId && (
-        <AddMemberModal
-          orgId={orgId}
-          isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
-          onAdded={(newMember) => setMembers([newMember, ...members])}
-        />
-      )}
+      {/* Invite Member Modal */}
+      <InviteMemberModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+      />
     </div>
   );
 }

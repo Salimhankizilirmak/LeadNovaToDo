@@ -16,7 +16,7 @@ import { useUser, useClerk } from '@clerk/nextjs';
 const navItems = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Projeler', href: '/dashboard/projects', icon: FolderKanban },
-  { name: 'Takvim', href: '#', icon: CalendarDays },
+  { name: 'Takvim', href: '/dashboard/calendar', icon: CalendarDays },
   { name: 'Ekip', href: '/dashboard/team', icon: Users },
   { name: 'Raporlar', href: '#', icon: BarChart3 },
 ];

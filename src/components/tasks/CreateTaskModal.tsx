@@ -17,6 +17,7 @@ const schema = z.object({
   description: z.string().max(500).optional(),
   priority: z.enum(['low', 'medium', 'high', 'critical']),
   assignee_id: z.string().optional().nullable(),
+  due_date: z.string().optional().nullable(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -71,6 +72,7 @@ export default function CreateTaskModal({
         projectId: projectId,
         orgId: orgId,
         assigneeId: values.assignee_id,
+        dueDate: values.due_date,
       });
 
       if (!result.success) throw new Error(result.error || 'Görev oluşturulamadı');
@@ -193,6 +195,18 @@ export default function CreateTaskModal({
                 </option>
               ))}
             </select>
+          </div>
+          
+          {/* Bitiş Tarihi */}
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">
+              Bitiş Tarihi (Opsiyonel)
+            </label>
+            <input
+              type="date"
+              {...register('due_date')}
+              className="w-full px-4 py-3 text-sm rounded-xl border border-gray-100 bg-gray-50 text-gray-900 focus:bg-white focus:border-indigo-400 transition-all outline-none cursor-pointer"
+            />
           </div>
 
           {/* Footer */}

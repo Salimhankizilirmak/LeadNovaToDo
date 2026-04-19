@@ -11,6 +11,7 @@ interface CreateTaskParams {
   orgId: string;
   priority: 'low' | 'medium' | 'high' | 'critical';
   assigneeId?: string | null;
+  dueDate?: string | null;
 }
 
 /**
@@ -42,6 +43,7 @@ export async function createTaskAction(params: CreateTaskParams) {
         org_id: params.orgId || null,
         priority: params.priority,
         assignee_id: params.assigneeId || null,
+        due_date: params.dueDate || null,
         created_by: userId,
         status: 'todo',
       })
@@ -87,5 +89,34 @@ export async function createTaskAction(params: CreateTaskParams) {
   } catch (globalError: any) {
     console.error('SERVER ACTION CRITICAL ERROR:', globalError);
     return { success: false, error: globalError.message || 'Sunucu tarafında beklenmedik bir hata oluştu.' };
+  }
+}
+
+/**
+ * Görev durumunu güncelleme (Server Action)
+ */
+export async function updateTaskStatusAction(taskId: string, newStatus: string) {
+  try {
+    const { getToken, userId } = await auth();
+    if (!userId) return { success: false, error: 'Oturum açılmamış.' };
+
+    const token = await getToken({ template: 'supabase' });
+    const supabase = await createClerkClient(token);
+
+    const { data, error } = await supabase
+      .from('tasks')
+      .update({ 
+        status: newStatus,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', taskId)
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return { success: true, task: data };
+  } catch (err: any) {
+    console.error('Görev Statü Güncelleme Hatası:', err);
+    return { success: false, error: err.message };
   }
 }
