@@ -104,8 +104,11 @@ export default function CreateTaskModal({
       toast.success('Görev başarıyla eklendi ✓');
       onCreated(data);
       onClose();
-    } catch {
-      toast.error('Görev eklenirken bir hata oluştu.');
+    } catch (err: any) {
+      console.error('GÖREV OLUŞTURMA HATASI:', err);
+      const errorMessage = err.message || 'Görev eklenirken bir hata oluştu.';
+      const detail = err.details ? ` (${err.details})` : '';
+      toast.error(`${errorMessage}${detail}`);
     } finally {
       setSubmitting(false);
     }

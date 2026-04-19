@@ -76,8 +76,10 @@ export default function TaskSlideOver({
 
       toast.success('Değişiklikler kaydedildi ✓');
       onUpdated(data as Task);
-    } catch {
-      toast.error('Girişler kaydedilirken bir hata oluştu.');
+    } catch (err: any) {
+      console.error('GÖREV GÜNCELLEME HATASI:', err);
+      const errorMessage = err.message || 'Girişler kaydedilirken bir hata oluştu.';
+      toast.error(errorMessage);
     } finally {
       setSaving(false);
     }
