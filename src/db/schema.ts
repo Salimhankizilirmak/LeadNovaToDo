@@ -10,6 +10,7 @@ export const organizations = sqliteTable('organizations', {
   id: text('id').primaryKey(), // Clerk Org ID: org_...
   name: text('name').notNull(),
   ownerId: text('owner_id').notNull(), // Clerk User ID: user_...
+  ownerEmail: text('owner_email').notNull().default(''), // Firma Sahibi (Patron) E-postası
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
 });
 

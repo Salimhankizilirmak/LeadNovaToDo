@@ -1,5 +1,7 @@
 import { auth, clerkClient, currentUser } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
+import { db } from '@/db';
+import { organizations } from '@/db/schema';
 
 export async function POST(req: Request) {
   try {
@@ -35,8 +37,15 @@ export async function POST(req: Request) {
       createdBy: userId as string,
     });
 
-    // 4. Patrona Davetiye (Invitation) gönder
-    // Rolü 'admin' (veya kurumunuzdaki karşılığı) olarak belirliyoruz
+    // 4. Turso Veritabanına Kaydet
+    await db.insert(organizations).values({
+      id: organization.id,
+      name: organizationName,
+      ownerId: userId as string,
+      ownerEmail: bossEmail,
+    });
+
+    // 5. Patrona Davetiye (Invitation) gönder
     await client.organizations.createOrganizationInvitation({
       organizationId: organization.id,
       emailAddress: bossEmail,

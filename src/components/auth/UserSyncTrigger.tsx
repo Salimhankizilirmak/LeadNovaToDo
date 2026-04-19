@@ -17,6 +17,10 @@ export default function UserSyncTrigger() {
           console.log('[Auth] Profil başarıyla senkronize edildi.');
         } else {
           console.error('[Auth] Senkronizasyon hatası:', result.error);
+          if (result.error === 'ACCESS_DENIED') {
+            // Yetkisiz kullanıcıyı dışarı at veya hata sayfasına yönlendir
+            window.location.href = '/?error=access_denied';
+          }
         }
       } catch (err) {
         console.error('[Auth] Kritik senkronizasyon hatası:', err);
