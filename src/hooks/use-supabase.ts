@@ -12,8 +12,8 @@ export function useSupabase() {
   const { getToken } = useAuth();
 
   const getSupabase = useCallback(async () => {
-    // Clerk'ten Supabase için taze token al (Refresh token otomatik kullanılır)
-    const token = await getToken({ template: 'supabase' });
+    // Clerk'ten Supabase için taze token al (skipCache: true ile bayat token riskini bitiriyoruz)
+    const token = await getToken({ template: 'supabase', skipCache: true });
     
     if (!token) {
       throw new Error('Supabase oturum anahtarı (JWT) alınamadı. Lütfen oturumunuzu kontrol edin.');

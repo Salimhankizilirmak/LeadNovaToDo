@@ -57,7 +57,7 @@ function StatCard({
 /* ── Ana Sayfa (Server Component) ─────────────────────────── */
 export default async function DashboardPage() {
   const { getToken, userId, orgId } = await auth();
-  const token = await getToken({ template: 'supabase' });
+  const token = await getToken({ template: 'supabase', skipCache: true });
   const user = await currentUser();
 
   if (!token || !userId) {

@@ -25,7 +25,7 @@ export async function createTaskAction(params: CreateTaskParams) {
       return { success: false, error: 'Oturum açılmamış. Lütfen giriş yapın.' };
     }
 
-    const token = await getToken({ template: 'supabase' });
+    const token = await getToken({ template: 'supabase', skipCache: true });
     if (!token) {
       return { success: false, error: 'Supabase erişim anahtarı alınamadı.' };
     }
