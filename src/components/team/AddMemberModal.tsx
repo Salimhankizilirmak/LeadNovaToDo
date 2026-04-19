@@ -56,10 +56,10 @@ export default function AddMemberModal({
     const supabase = createClient();
 
     try {
-      // 1. Kullanıcıyı users tablosunda ara
+      // 1. Kullanıcıyı profiles tablosunda ara
       const { data: targetUser, error: fetchError } = await supabase
-        .from('users')
-        .select('id, email, display_name')
+        .from('profiles')
+        .select('id, email, full_name')
         .eq('email', values.email)
         .single();
 
@@ -99,7 +99,7 @@ export default function AddMemberModal({
         user: {
           id: targetUser.id,
           email: targetUser.email,
-          display_name: targetUser.display_name
+          display_name: targetUser.full_name
         }
       };
       onAdded(newMember);
