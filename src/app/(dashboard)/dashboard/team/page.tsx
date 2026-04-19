@@ -194,6 +194,12 @@ export default function TeamPage() {
           {members.map((member) => {
             const isMe = member.user_id === userId;
             
+            // Hiyerarşik Düzenleme İzni
+            const canIEditThisMember = 
+              (myIndustrialRole === 'Patron' && (member.role !== 'Patron' || isMe)) ||
+              (myIndustrialRole === 'Genel Müdür' && member.role !== 'Patron' && member.role !== 'Genel Müdür') ||
+              (myIndustrialRole === 'Admin');
+
             return (
               <li 
                 key={member.user_id} 
@@ -224,7 +230,7 @@ export default function TeamPage() {
 
                 <div className="flex items-center justify-between sm:justify-end gap-6 sm:pl-4">
                   {/* Role Selector or Badge */}
-                  {canEditRoles && !isMe ? (
+                  {canIEditThisMember && !isMe ? (
                     <div className="relative">
                       <select
                         disabled={updatingRoleId === member.user_id}

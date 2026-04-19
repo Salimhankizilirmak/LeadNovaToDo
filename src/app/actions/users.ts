@@ -80,9 +80,24 @@ export async function updateUserRoleAction(targetUserId: string, newRole: UserRo
     const clerk = await getClerkClient();
     const user = await currentUser();
     
-    // Güvenlik: Sadece Patron veya Genel Müdür rol değiştirebilir (veya mevcut Admin)
     const myRole = user?.publicMetadata?.role as UserRole;
-    if (myRole !== 'Patron' && myRole !== 'Genel Müdür' && myRole !== 'Admin') {
+    
+    // Hedef kullanıcının mevcut rollerini al
+    const targetUser = await clerk.users.getUser(targetUserId);
+    const targetRole = targetUser.publicMetadata?.role as UserRole;
+
+    // Hiyerarşik Yetki Kontrolü
+    if (myRole === 'Patron') {
+      // Patron sadece kendisi dışındaki diğer Patronları değiştiremez (isteğe bağlı)
+      if (targetRole === 'Patron' && userId !== targetUserId) {
+        return { success: false, error: 'Diğer patronların yetkilerini değiştiremezsiniz.' };
+      }
+    } else if (myRole === 'Genel Müdür') {
+      // Genel Müdür sadece Patron ve diğer Genel Müdürler dışındakileri değiştirebilir
+      if (targetRole === 'Patron' || targetRole === 'Genel Müdür') {
+        return { success: false, error: 'Üst düzey yöneticilerin yetkilerini değiştirme izniniz yok.' };
+      }
+    } else if (myRole !== 'Admin') {
       return { success: false, error: 'Bu işlem için yetkiniz yok.' };
     }
 
