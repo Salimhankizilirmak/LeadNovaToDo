@@ -64,12 +64,32 @@ export default function ProjectDetailPage() {
         setProject(projData);
 
         // 2. Fetch Organization Members via Profiles
-        const { data: profileData, error: profileError } = await supabase
+        const targetOrgId = projData.org_id;
+        
+        let { data: profileData, error: profileError } = await supabase
           .from('profiles')
           .select('*')
-          .eq('org_id', projData.org_id);
+          .eq('org_id', targetOrgId);
         
-        if (!profileError && profileData) {
+        // Eğer hiçbir üye bulunamadıysa ve projenin org_id'si boşsa, 
+        // kullanıcının kendi profiliyle aynı organizasyondaki kişileri getirmeyi deneyelim (Fallback)
+        if ((!profileData || profileData.length === 0) && !profileError) {
+          const { data: ownProfile } = await supabase
+            .from('profiles')
+            .select('org_id')
+            .limit(1)
+            .single();
+            
+          if (ownProfile?.org_id) {
+            const { data: fallbackData } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('org_id', ownProfile.org_id);
+            if (fallbackData) profileData = fallbackData;
+          }
+        }
+        
+        if (profileData) {
           setMembers(profileData.map(p => ({
             id: p.id,
             full_name: p.full_name,
