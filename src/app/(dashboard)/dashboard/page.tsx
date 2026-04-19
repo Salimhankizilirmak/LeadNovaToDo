@@ -12,6 +12,8 @@ import {
 import Link from 'next/link';
 import { createClerkClient } from '@/utils/supabase/server';
 
+export const dynamic = 'force-dynamic';
+
 /* ── Tipler ─────────────────────────────────────────────────── */
 interface DashboardStats {
   total: number;
@@ -40,7 +42,7 @@ function StatCard({
         <div className={`p-3 rounded-2xl ${color} transition-colors`}>
           <Icon className="w-6 h-6" />
         </div>
-        {trend && (
+        {trend && value > 0 && (
           <span className="text-[10px] font-black bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-full border border-emerald-100 uppercase tracking-tight">
             {trend}
           </span>
@@ -65,51 +67,53 @@ export default async function DashboardPage() {
   }
 
   const supabase = await createClerkClient(token);
+  const myRole = user?.publicMetadata?.role as string;
+  const isManager = myRole === 'Patron' || myRole === 'Genel Müdür' || myRole === 'Admin';
 
+  // 1. Görev Sorgusu (Managers see all org tasks, others see assigned)
   const taskQuery = supabase
     .from('tasks')
     .select('*, project:projects!tasks_project_id_fkey(name, color), assignee:profiles!fk_tasks_assignee(full_name, avatar_url)')
-    .eq('assignee_id', userId)
     .order('created_at', { ascending: false })
     .limit(5);
 
+  if (isManager && orgId) {
+    taskQuery.eq('org_id', orgId);
+  } else {
+    taskQuery.eq('assignee_id', userId);
+  }
+
+  // 2. Proje Sorgusu (RLS yardımıyla yetkili olan tüm projeler)
   const projectQuery = supabase
     .from('projects')
     .select('*')
     .limit(3);
 
-  // Eğer bir organizasyondaysak, organizasyon verilerini filtrele. 
-  // Değilsek (Kişisel), sadece atananları getir (RLS zaten koruyor).
-  if (orgId) {
-    // Projeleri sadece bu organizasyona ait olanlarla kısıtla
-    projectQuery.eq('org_id', orgId);
-    // Görevleri esnet: Bu organizasyona ait olanLAR VEYA bana atananLAR
-    taskQuery.or(`org_id.eq.${orgId},assignee_id.eq.${userId}`);
+  // 3. İstatistik Sorgusu
+  const statsQuery = supabase
+    .from('tasks')
+    .select('status, priority');
+
+  if (isManager && orgId) {
+    statsQuery.eq('org_id', orgId);
+  } else {
+    statsQuery.eq('assignee_id', userId);
   }
 
-  // Promise.all kullanarak verileri paralel getir ve hata yakalamayı (try/catch veya opsiyonel zincirlemeyle) destekle
+  // Verileri paralel getir
   const [
     { data: tasksData, error: taskError },
     { data: projectsData, error: projectError },
-  ] = await Promise.all([taskQuery, projectQuery]);
+    { data: allTasks, error: statsError }
+  ] = await Promise.all([taskQuery, projectQuery, statsQuery]);
 
   const tasks = tasksData || [];
   const projects = projectsData || [];
 
-  if (taskError) {
-    console.error("Dashboard tasks fetch error:", taskError);
-  }
+  if (taskError) console.error("Dashboard tasks error:", taskError);
+  if (projectError) console.error("Dashboard projects error:", projectError);
 
   // İstatistikleri hesapla
-  const statsQuery = supabase
-    .from('tasks')
-    .select('status, priority')
-    .eq('assignee_id', userId);
-
-  if (orgId) statsQuery.eq('org_id', orgId);
-
-  const { data: allTasks } = await statsQuery;
-
   const stats: DashboardStats = {
     total: allTasks?.length || 0,
     completed: allTasks?.filter(t => t.status === 'done').length || 0,
