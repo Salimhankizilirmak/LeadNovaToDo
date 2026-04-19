@@ -15,8 +15,7 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { toast } from 'sonner';
-import { createClerkClient } from '@/utils/supabase/client';
-import { useAuth } from '@clerk/nextjs';
+import { useSupabase } from '@/hooks/use-supabase';
 
 /* ── Tipler ─────────────────────────────────────────────────── */
 interface Message {
@@ -36,10 +35,8 @@ const QUICK_ACTIONS = [
   { id: 'suggest', label: 'Görev Öner', icon: <Lightbulb size={14} />, prompt: 'Bu projenin ilerlemesi için 3 tane yeni ve mantıklı alt görev öner.' },
 ];
 
-export default function AIAssistantWidget() {
-  const params = useParams();
-  const projectId = params?.id as string | undefined;
-  const { getToken } = useAuth();
+export default function AIAssistantWidget({ projectId }: { projectId?: string }) {
+  const { getSupabase } = useSupabase();
 
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
@@ -60,29 +57,32 @@ export default function AIAssistantWidget() {
 
   // Proje verisini arka planda çek (Context için)
   useEffect(() => {
-    if (projectId && isOpen) {
+    if (isOpen && projectId) {
       const fetchContext = async () => {
-        const token = await getToken({ template: 'supabase' });
-        if (!token) return;
-        const supabase = createClerkClient(token);
-        const { data: tasks } = await supabase
-          .from('tasks')
-          .select('title, status')
-          .eq('project_id', projectId);
-        
-        const { data: project } = await supabase
-          .from('projects')
-          .select('name')
-          .eq('id', projectId)
-          .single();
+        try {
+          const supabase = await getSupabase();
+          
+          const { data: tasks } = await supabase
+            .from('tasks')
+            .select('title, status')
+            .eq('project_id', projectId);
+          
+          const { data: project } = await supabase
+            .from('projects')
+            .select('name')
+            .eq('id', projectId)
+            .single();
 
-        if (project && tasks) {
-          setProjectData({ name: project.name, tasks });
+          if (project && tasks) {
+            setProjectData({ name: project.name, tasks });
+          }
+        } catch (error) {
+          console.error("AI Context load error:", error);
         }
       };
       fetchContext();
     }
-  }, [projectId, isOpen]);
+  }, [projectId, isOpen, getSupabase]);
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || loading) return;

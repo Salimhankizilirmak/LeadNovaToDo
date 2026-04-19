@@ -75,6 +75,7 @@ export default async function DashboardPage() {
       .from('tasks')
       .select('*, project:project_id(name, color)')
       .eq('org_id', orgId)
+      .eq('assignee_id', userId)
       .order('created_at', { ascending: false })
       .limit(5),
     supabase
@@ -84,11 +85,12 @@ export default async function DashboardPage() {
       .limit(3),
   ]);
 
-  // İstatistikleri hesapla (Organizasyonun tüm görevleri)
+  // İstatistikleri hesapla (Kullanıcıya atanan görevler)
   const { data: allTasks } = await supabase
     .from('tasks')
     .select('status, priority')
-    .eq('org_id', orgId);
+    .eq('org_id', orgId)
+    .eq('assignee_id', userId);
 
   const stats: DashboardStats = {
     total: allTasks?.length || 0,

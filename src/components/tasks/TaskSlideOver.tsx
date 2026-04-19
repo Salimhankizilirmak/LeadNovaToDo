@@ -3,8 +3,7 @@
 import { useState } from 'react';
 import { X, Calendar, Type, AlignLeft, Flag, Save, Trash2, Loader2, User as UserIcon } from 'lucide-react';
 import { toast } from 'sonner';
-import { createClerkClient } from '@/utils/supabase/client';
-import { useAuth } from '@clerk/nextjs';
+import { useSupabase } from '@/hooks/use-supabase';
 import { Task, Member } from '@/types/task';
 
 /* ── Props ──────────────────────────────────────────────────── */
@@ -25,7 +24,7 @@ export default function TaskSlideOver({
   onUpdated,
   onDeleted,
 }: TaskSlideOverProps) {
-  const { getToken } = useAuth();
+  const { getSupabase } = useSupabase();
   const [title, setTitle] = useState(task?.title || '');
   const [description, setDescription] = useState(task?.description || '');
   const [priority, setPriority] = useState<Task['priority']>((task?.priority as Task['priority']) || 'medium');
@@ -41,10 +40,7 @@ export default function TaskSlideOver({
     // but here we'll use it for the immediate update logic if needed.
     setSaving(true);
     try {
-      const token = await getToken({ template: 'supabase' });
-      if (!token) throw new Error('Oturum anahtarı alınamadı.');
-      
-      const supabase = createClerkClient(token);
+      const supabase = await getSupabase();
       
       const payload = {
         title,
@@ -95,10 +91,7 @@ export default function TaskSlideOver({
     
     setDeleting(true);
     try {
-      const token = await getToken({ template: 'supabase' });
-      if (!token) throw new Error('Oturum anahtarı alınamadı.');
-      
-      const supabase = createClerkClient(token);
+      const supabase = await getSupabase();
       const { error } = await supabase.from('tasks').delete().eq('id', task.id);
       
       if (error) throw error;

@@ -11,8 +11,8 @@ import {
   Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { createClerkClient } from '@/utils/supabase/client';
-import { useAuth } from '@clerk/nextjs';
+import { useUser } from '@clerk/nextjs';
+import { useSupabase } from '@/hooks/use-supabase';
 import TaskBoard from '@/components/tasks/TaskBoard';
 import TaskList from '@/components/tasks/TaskList';
 import TaskSlideOver from '@/components/tasks/TaskSlideOver';
@@ -29,7 +29,7 @@ interface Project {
 export default function ProjectDetailPage() {
   const { id } = useParams();
   const router = useRouter();
-  const { getToken } = useAuth();
+  const { getSupabase } = useSupabase();
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -47,10 +47,7 @@ export default function ProjectDetailPage() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const token = await getToken({ template: 'supabase' });
-        if (!token) throw new Error('Oturum anahtarı alınamadı.');
-
-        const supabase = createClerkClient(token);
+        const supabase = await getSupabase();
         
         // 1. Fetch Project
         const { data: projData, error: projError } = await supabase
@@ -91,7 +88,7 @@ export default function ProjectDetailPage() {
     };
 
     fetchData();
-  }, [id, router]);
+  }, [id, router, getSupabase]);
 
   /* ── Optimistic Updates & Handlers ───────────────────────── */
   const handleUpdateTaskStatus = async (taskId: string, newStatus: 'todo' | 'in_progress' | 'done') => {
@@ -102,10 +99,7 @@ export default function ProjectDetailPage() {
     setTasks(tasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
 
     try {
-      const token = await getToken({ template: 'supabase' });
-      if (!token) throw new Error('Oturum anahtarı bulunamadı.');
-
-      const supabase = createClerkClient(token);
+      const supabase = await getSupabase();
       const { error } = await supabase
         .from('tasks')
         .update({ status: newStatus })

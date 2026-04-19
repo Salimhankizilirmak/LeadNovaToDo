@@ -11,8 +11,8 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { createClerkClient } from '@/utils/supabase/client';
-import { useUser, useAuth } from '@clerk/nextjs';
+import { useUser } from '@clerk/nextjs';
+import { useSupabase } from '@/hooks/use-supabase';
 import AddMemberModal from '@/components/team/AddMemberModal';
 
 /* ── Tipler ─────────────────────────────────────────────────── */
@@ -64,8 +64,8 @@ function TeamSkeleton() {
 
 /* ── Ana Sayfa ───────────────────────────────────────────── */
 export default function TeamPage() {
-  const { user, isLoaded: isUserLoaded } = useUser();
-  const { getToken } = useAuth();
+  const { user } = useUser();
+  const { getSupabase } = useSupabase();
   const userId = user?.id ?? null;
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,11 +79,7 @@ export default function TeamPage() {
     const fetchOrgData = async () => {
       setLoading(true);
       try {
-        const token = await getToken({ template: 'supabase' });
-        console.log("CLERK TOKEN DURUMU (Team):", token ? "Token Başarıyla Alındı ✓" : "TOKEN BOŞ! ❌");
-        if (!token) throw new Error('Oturum anahtarı alınamadı.');
-
-        const supabase = createClerkClient(token);
+        const supabase = await getSupabase();
         
         // 1. Organizasyonu ve kendi rolünü bul
         const { data: currentMember, error: orgError } = await supabase
@@ -100,7 +96,7 @@ export default function TeamPage() {
         setOrgId(currentMember.org_id);
         setCurrentUserRole(currentMember.role);
 
-        // 2. Tüm üyeleri çek (Join kaldırıldı - 400 Fix)
+        // 2. Tüm üyeleri çek
         const { data: memberList, error: listError } = await supabase
           .from('org_members')
           .select('user_id, role')
@@ -122,7 +118,7 @@ export default function TeamPage() {
     };
 
     fetchOrgData();
-  }, [userId]);
+  }, [userId, getSupabase]);
 
   const handleRemoveMember = async (targetUserId: string) => {
     if (!orgId) return;
@@ -137,10 +133,7 @@ export default function TeamPage() {
     setMembers(members.filter(m => m.user_id !== targetUserId));
     
     try {
-      const token = await getToken({ template: 'supabase' });
-      if (!token) throw new Error('Oturum anahtarı bulunamadı.');
-
-      const supabase = createClerkClient(token);
+      const supabase = await getSupabase();
       const { error } = await supabase
         .from('org_members')
         .delete()

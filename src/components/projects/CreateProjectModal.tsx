@@ -6,8 +6,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { X, Loader2, FolderPlus } from 'lucide-react';
-import { createClerkClient } from '@/utils/supabase/client';
-import { useUser, useAuth } from '@clerk/nextjs';
+import { useUser } from '@clerk/nextjs';
+import { useSupabase } from '@/hooks/use-supabase';
 
 /* ── Tipler ─────────────────────────────────────────────────── */
 export interface Project {
@@ -38,9 +38,7 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 /* ── Organizasyon Yardımcısı ────────────────────────────────── */
-async function ensureOrgId(userId: string, token: string): Promise<string> {
-  const supabase = createClerkClient(token);
-
+async function ensureOrgId(supabase: any, userId: string): Promise<string> {
   // Kullanıcının mevcut organizasyonunu bul
   const { data: memberRow } = await supabase
     .from('org_members')
@@ -80,7 +78,7 @@ export default function CreateProjectModal({
   onCreated,
 }: CreateProjectModalProps) {
   const { user } = useUser();
-  const { getToken } = useAuth();
+  const { getSupabase } = useSupabase();
   const userId = user?.id ?? null;
   const [selectedColor, setSelectedColor] = useState(COLOR_OPTIONS[0].hex);
   const [submitting, setSubmitting] = useState(false);
@@ -96,14 +94,10 @@ export default function CreateProjectModal({
     setSubmitting(true);
 
     try {
-      const token = await getToken({ template: 'supabase' });
-      console.log("CLERK TOKEN DURUMU (Project):", token ? "Token Başarıyla Alındı ✓" : "TOKEN BOŞ! ❌");
-      if (!token) throw new Error('Oturum anahtarı alınamadı.');
-
-      const supabase = createClerkClient(token);
+      const supabase = await getSupabase();
       
       console.log('--- Proje Oluşturma Başı ---');
-      const orgId = await ensureOrgId(userId, token);
+      const orgId = await ensureOrgId(supabase, userId);
       console.log('Kullanılan OrgID:', orgId);
 
       const { data, error } = await supabase

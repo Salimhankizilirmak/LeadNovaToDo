@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, FolderOpen } from 'lucide-react';
 import { toast } from 'sonner';
-import { createClerkClient } from '@/utils/supabase/client';
-import { useUser, useAuth } from '@clerk/nextjs';
+import { useUser } from '@clerk/nextjs';
+import { useSupabase } from '@/hooks/use-supabase';
 import CreateProjectModal, {
   type Project,
 } from '@/components/projects/CreateProjectModal';
@@ -96,8 +96,8 @@ function ProjectCard({
 /* ── Ana Sayfa ───────────────────────────────────────────── */
 export default function ProjectsPage() {
   const router = useRouter();
-  const { user, isLoaded } = useUser();
-  const { getToken } = useAuth();
+  const { user } = useUser();
+  const { getSupabase } = useSupabase();
   const userId = user?.id ?? null;
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -109,10 +109,7 @@ export default function ProjectsPage() {
     const fetchProjects = async () => {
       setLoading(true);
       try {
-        const token = await getToken({ template: 'supabase' });
-        if (!token) throw new Error('Oturum anahtarı alınamadı.');
-
-        const supabase = createClerkClient(token);
+        const supabase = await getSupabase();
         
         // Kullanıcının org_id'sini bul
         const { data: memberRow } = await supabase

@@ -6,8 +6,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { X, Loader2, ClipboardCheck } from 'lucide-react';
-import { createClerkClient } from '@/utils/supabase/client';
-import { useUser, useAuth } from '@clerk/nextjs';
+import { useUser } from '@clerk/nextjs';
+import { useSupabase } from '@/hooks/use-supabase';
 import { Task, Member } from '@/types/task';
 
 /* ── Zod Şeması ─────────────────────────────────────────────── */
@@ -40,7 +40,7 @@ export default function CreateTaskModal({
 }: CreateTaskModalProps) {
   // TODO Sprint 2: Clerk userId → Supabase user_id mapping eklenecek
   const { user } = useUser();
-  const { getToken } = useAuth();
+  const { getSupabase } = useSupabase();
   const userId = user?.id ?? null;
   const [submitting, setSubmitting] = useState(false);
 
@@ -64,11 +64,7 @@ export default function CreateTaskModal({
     setSubmitting(true);
 
     try {
-      const token = await getToken({ template: 'supabase' });
-      console.log("CLERK TOKEN DURUMU (Task):", token ? "Token Başarıyla Alındı ✓" : "TOKEN BOŞ! ❌");
-      if (!token) throw new Error('Oturum anahtarı alınamadı.');
-      
-      const supabase = createClerkClient(token);
+      const supabase = await getSupabase();
       
       const { data, error } = await supabase
         .from('tasks')

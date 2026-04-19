@@ -21,13 +21,29 @@ ALTER TABLE public.projects ALTER COLUMN created_by TYPE TEXT;
 ALTER TABLE public.tasks ALTER COLUMN created_by TYPE TEXT;
 ALTER TABLE public.tasks ALTER COLUMN assignee_id TYPE TEXT;
 
--- 1.1 GÖREV TABLOSUNA ORG_ID EKLEME
+-- 1.1 GÖREV TABLOSUNA KOLON EKLEMELERİ (org_id ve updated_at)
 DO $$ 
 BEGIN 
+    -- org_id kontrol ve ekleme
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tasks' AND column_name = 'org_id') THEN
         ALTER TABLE public.tasks ADD COLUMN org_id TEXT;
     END IF;
+
+    -- updated_at kontrol ve ekleme
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tasks' AND column_name = 'updated_at') THEN
+        ALTER TABLE public.tasks ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
+    END IF;
 END $$;
+
+-- 1.2 VERİ GERİYE DÖNÜK BAĞLAMA (Backfill)
+-- Mevcut görevlerin org_id'sini bağlı oldukları projelerden dolduruyoruz.
+UPDATE public.tasks t
+SET org_id = p.org_id
+FROM public.projects p
+WHERE t.project_id = p.id AND (t.org_id IS NULL OR t.org_id = '');
+
+-- Eğer hala org_id'si boş görevler varsa (projesiz), onları kullanıcının bir organizasyonuna atamak gerekebilir.
+-- Şimdilik en azından hata vermemesi için proje-bazlı backfill yeterlidir.
 
 -- 2. RLS POLİTİKALARINI TEMİZLEME VE YENİDEN KURMA
 -- auth.uid() artık Clerk'ten gelen String 'sub' değerini döndürür.
