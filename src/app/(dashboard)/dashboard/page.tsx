@@ -86,14 +86,20 @@ export default async function DashboardPage() {
     projectQuery.eq('org_id', orgId);
     // Görevleri esnet: Bu organizasyona ait olanLAR VEYA bana atananLAR
     taskQuery.or(`org_id.eq.${orgId},assignee_id.eq.${userId}`);
-  } else {
-    // Kişisel alandayız, zaten varsayılan sorgu assignee_id = userId eklemişti
   }
 
+  // Promise.all kullanarak verileri paralel getir ve hata yakalamayı (try/catch veya opsiyonel zincirlemeyle) destekle
   const [
-    { data: tasks },
-    { data: projects },
+    { data: tasksData, error: taskError },
+    { data: projectsData, error: projectError },
   ] = await Promise.all([taskQuery, projectQuery]);
+
+  const tasks = tasksData || [];
+  const projects = projectsData || [];
+
+  if (taskError) {
+    console.error("Dashboard tasks fetch error:", taskError);
+  }
 
   // İstatistikleri hesapla
   const statsQuery = supabase
@@ -112,11 +118,11 @@ export default async function DashboardPage() {
     critical: allTasks?.filter(t => t.priority === 'critical').length || 0,
   };
 
-  const displayName = user?.firstName || user?.emailAddresses[0].emailAddress.split('@')[0] || 'Kullanıcı';
+  const displayName = user?.firstName || user?.emailAddresses[0]?.emailAddress?.split('@')[0] || 'Kullanıcı';
 
   return (
     <div className="space-y-10 pb-10">
-      {/* Karşılama */}
+      {/* Karşılama - Bu alanın sunucu tarafında render edildiğinden emin oluyoruz */}
       <div className="flex flex-col gap-2">
         <h1 className="text-4xl font-black text-gray-900 tracking-tighter">
           Merhaba, {displayName}! 👋
