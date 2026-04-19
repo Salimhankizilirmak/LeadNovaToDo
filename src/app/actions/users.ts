@@ -4,29 +4,23 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { createClerkClient } from '@/utils/supabase/server';
 import { UserRole } from '@/types/task';
 
-/**
- * Kullanıcının Clerk bilgilerini Supabase 'profiles' tablosuna senkronize eder.
- * Bu sayede veritabanında user_id yerine gerçek isimleri görebiliriz.
- */
-import { createClient } from '@supabase/supabase-js';
-
 export async function syncProfile() {
   try {
-    const { userId, orgId } = await auth();
+    const { userId, getToken, orgId } = await auth();
     const user = await currentUser();
 
     if (!userId || !user) return { success: false, error: 'Oturum bulunamadı' };
 
-    // Sunucu tarafında tam yetkili Supabase istemcisi oluşturuluyor (RLS atlanıyor)
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
+    const token = await getToken({ template: 'supabase' });
+    if (!token) return { success: false, error: 'Supabase token alınamadı' };
+
+    const supabase = await createClerkClient(token);
 
     // Clerk metadata'dan veya varsayılan rolleri al
     const role = (user.publicMetadata?.role as UserRole) || 'Personel';
     const full_name = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.emailAddresses[0]?.emailAddress || 'Kullanıcı';
 
-    const { data, error } = await supabaseAdmin
+    const { data, error } = await supabase
       .from('profiles')
       .upsert({
         id: userId,
