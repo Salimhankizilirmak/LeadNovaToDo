@@ -32,6 +32,8 @@ interface Task {
   due_date: string | null;
   assignee_id: string | null;
   assignee?: Member | null;
+  created_by: string;
+  org_id: string;
 }
 
 /* ── Görev Kartı ───────────────────────────────────────────── */
