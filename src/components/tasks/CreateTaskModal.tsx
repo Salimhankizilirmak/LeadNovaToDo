@@ -12,6 +12,7 @@ import { useUser, useAuth } from '@clerk/nextjs';
 /* ── Zod Şeması ─────────────────────────────────────────────── */
 const schema = z.object({
   title: z.string().min(1, 'Görev başlığı zorunludur').max(120),
+  description: z.string().max(500).optional(),
   priority: z.enum(['low', 'medium', 'high', 'critical']),
   assignee_id: z.string().optional().nullable(),
 });
@@ -67,6 +68,7 @@ export default function CreateTaskModal({
     defaultValues: {
       priority: 'medium',
       assignee_id: null,
+      description: '',
     },
   });
 
@@ -87,7 +89,7 @@ export default function CreateTaskModal({
         .from('tasks')
         .insert({
           title: values.title,
-          description: null, // Boş geçilemez durumları için güvenli null
+          description: values.description || "", // Boş string garantisi (400 Hatası Fix)
           priority: values.priority,
           project_id: projectId,
           assignee_id: values.assignee_id || null,
@@ -153,6 +155,19 @@ export default function CreateTaskModal({
                 {errors.title.message}
               </p>
             )}
+          </div>
+          
+          {/* Açıklama */}
+          <div className="space-y-2">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">
+              Açıklama (Opsiyonel)
+            </label>
+            <textarea
+              {...register('description')}
+              placeholder="Görev detayı ekleyin..."
+              rows={3}
+              className="w-full px-4 py-3 text-sm rounded-xl border border-gray-100 bg-gray-50 text-gray-900 placeholder-gray-300 outline-none transition-all focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/5 resize-none"
+            />
           </div>
 
           {/* Öncelik */}
