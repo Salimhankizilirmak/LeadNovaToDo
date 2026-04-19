@@ -2,8 +2,8 @@
 
 import { auth, currentUser, clerkClient as getClerkClient } from '@clerk/nextjs/server';
 import { db } from '@/db';
-import { profiles, organizations } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { profiles, organizations, orgMembers } from '@/db/schema';
+import { eq, and, sql } from 'drizzle-orm';
 
 import { UserRole } from '@/types/task';
 
@@ -75,6 +75,22 @@ export async function syncProfile() {
     }).returning();
 
     console.log('[Sync] Başarılı! Profil güncellendi. Rol:', updatedProfile.role, 'Org:', updatedProfile.orgId);
+
+    // 6. Organizasyon Bağını Garantile (Multi-tenant Sync)
+    if (finalOrgId) {
+      console.log('[Sync] OrgMembers bağı kuruluyor/güncelleniyor...', { userId, finalOrgId });
+      await db.insert(orgMembers).values({
+        orgId: finalOrgId,
+        userId: userId,
+        role: updatedProfile.role || 'member'
+      }).onConflictDoUpdate({
+        target: [orgMembers.orgId, orgMembers.userId],
+        set: {
+          role: updatedProfile.role || 'member'
+        }
+      });
+    }
+
     return { success: true, profile: updatedProfile };
   } catch (err: any) {
     console.error('PROFIL SENKRONIZASYON HATASI:', err);
@@ -176,9 +192,18 @@ export async function getOrgProfiles(orgId: string) {
       return { success: false, error: 'Yetkisiz organizasyon erişimi.' };
     }
 
-    const data = await db.query.profiles.findMany({
-      where: eq(profiles.orgId, orgId),
-    });
+    const data = await db
+      .select({
+        id: profiles.id,
+        fullName: profiles.fullName,
+        email: profiles.email,
+        avatarUrl: profiles.avatarUrl,
+        role: orgMembers.role, // Organizasyondaki gerçek rolü çek
+        updatedAt: profiles.updatedAt
+      })
+      .from(orgMembers)
+      .innerJoin(profiles, eq(orgMembers.userId, profiles.id))
+      .where(eq(orgMembers.orgId, orgId));
 
     return { success: true, profiles: data };
   } catch (err: any) {
