@@ -111,30 +111,17 @@ export default function ProjectsPage() {
       try {
         const supabase = await getSupabase();
         
-        // Kullanıcının org_id'sini bul
-        const { data: memberRow } = await supabase
-          .from('org_members')
-          .select('org_id')
-          .eq('user_id', userId)
-          .limit(1)
-          .single();
-
-        if (!memberRow?.org_id) {
-          setProjects([]);
-          return;
-        }
-
-        // O org'a ait projeleri getir
+        // RLS sayesinde artık sadece yetkili olduğumuz projeler (kendi org + atandığımız projeler) gelecek.
         const { data, error } = await supabase
           .from('projects')
           .select('id, name, description, color, status, org_id, created_by, created_at')
-          .eq('org_id', memberRow.org_id)
           .order('created_at', { ascending: false });
 
         if (error) throw error;
 
         setProjects((data as Project[]) ?? []);
-      } catch {
+      } catch (err) {
+        console.error('PROJE FETCH HATASI:', err);
         toast.error('Projeler yüklenirken bir sorun oluştu.');
       } finally {
         setLoading(false);

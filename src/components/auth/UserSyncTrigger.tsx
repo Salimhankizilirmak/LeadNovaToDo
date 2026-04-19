@@ -1,16 +1,17 @@
 import { useEffect } from 'react';
-import { useUser } from '@clerk/nextjs';
+import { useUser, useOrganization } from '@clerk/nextjs';
 import { syncProfile } from '@/app/actions/users';
 
 export default function UserSyncTrigger() {
-  const { isLoaded, isSignedIn } = useUser();
+  const { isLoaded, isSignedIn, user } = useUser();
+  const { organization } = useOrganization();
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
 
     const sync = async () => {
       try {
-        console.log('[Auth] Profil senkronizasyonu başlatılıyor...');
+        console.log('[Auth] Profil senkronizasyonu başlatılıyor... (User:', user?.id, 'Org:', organization?.id, ')');
         const result = await syncProfile();
         if (result.success) {
           console.log('[Auth] Profil başarıyla senkronize edildi.');
@@ -23,7 +24,7 @@ export default function UserSyncTrigger() {
     };
     
     sync();
-  }, [isLoaded, isSignedIn]);
+  }, [isLoaded, isSignedIn, user?.id, organization?.id]);
 
   return null;
 }
