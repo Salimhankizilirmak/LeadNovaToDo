@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useOrganization } from '@clerk/nextjs';
 import { toast } from 'sonner';
 import { X, Loader2, UserPlus, Mail, Shield, User } from 'lucide-react';
+import { UserRole } from '@/types/task';
 
 interface InviteMemberModalProps {
   isOpen: boolean;
