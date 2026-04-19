@@ -14,19 +14,29 @@ export const ourFileRouter = {
     blob: { maxFileSize: "8MB", maxFileCount: 5 }
   })
     .middleware(async ({ req }) => {
-      // Sadece giriş yapmış kullanıcılar yükleyebilir
       const { userId, orgId } = await auth();
- 
       if (!userId || !orgId) throw new Error("Unauthorized");
- 
       return { userId, orgId };
     })
     .onUploadComplete(async ({ metadata, file }) => {
-      console.log("Upload complete for userId:", metadata.userId);
-      console.log("File URL", file.url);
-      
+      return { uploadedBy: metadata.userId, url: file.url };
+    }),
+
+  // Proje bazlı ekler (Brief, materyal vb)
+  projectAttachment: f({ 
+    image: { maxFileSize: "16MB", maxFileCount: 5 },
+    pdf: { maxFileSize: "32MB", maxFileCount: 5 },
+    blob: { maxFileSize: "32MB", maxFileCount: 5 }
+  })
+    .middleware(async ({ req }) => {
+      const { userId, orgId } = await auth();
+      if (!userId || !orgId) throw new Error("Unauthorized");
+      return { userId, orgId };
+    })
+    .onUploadComplete(async ({ metadata, file }) => {
       return { uploadedBy: metadata.userId, url: file.url };
     }),
 } satisfies FileRouter;
+
  
 export type OurFileRouter = typeof ourFileRouter;

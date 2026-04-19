@@ -2,26 +2,65 @@
 
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { db } from '@/db';
-import { projects, tasks, profiles, cells, cellMembers } from '@/db/schema';
-import { eq, and, desc } from 'drizzle-orm';
+import { projects, tasks, profiles, cells, cellMembers, projectAttachments } from '@/db/schema';
+import { eq, and, desc, or, sql } from 'drizzle-orm';
+
 
 /**
- * Tüm organizasyon projelerini getirir.
+ * Tüm organizasyon projelerini getirir (RBAC Uygulanmış).
  */
-export async function getProjectsAction(limit = 10) {
+export async function getProjectsAction(limit = 20) {
   try {
     const { userId, orgId } = await auth();
     if (!userId || !orgId) return { success: false, error: 'Oturum bulunamadı.' };
 
-    const data = await db.query.projects.findMany({
-      where: eq(projects.orgId, orgId),
-      limit: limit,
-      orderBy: [desc(projects.createdAt)],
-      with: {
-        manager: true,
-        creator: true
-      }
+    const userProfile = await db.query.profiles.findFirst({
+      where: eq(profiles.id, userId)
     });
+
+    const isHighRole = userProfile && ['Patron', 'Genel Müdür', 'Admin'].includes(userProfile.role);
+
+    let data;
+    if (isHighRole) {
+      data = await db.query.projects.findMany({
+        where: eq(projects.orgId, orgId),
+        limit: limit,
+        orderBy: [desc(projects.createdAt)],
+        with: {
+          manager: true,
+          creator: true
+        }
+      });
+    } else {
+      // Düşük roller: SADECE manager olduğu veya kendisine görev atandığı projeleri gör
+      // Manuel SQL Join yaklaşımı ile ID'leri toplayalım
+      const involved = await db.selectDistinct({ id: projects.id })
+        .from(projects)
+        .leftJoin(tasks, eq(projects.id, tasks.projectId))
+        .where(
+          and(
+            eq(projects.orgId, orgId),
+            or(
+              eq(projects.managerId, userId),
+              eq(tasks.assigneeId, userId)
+            )
+          )
+        );
+
+      const projectIds = involved.map(p => p.id);
+      if (projectIds.length === 0) return { success: true, projects: [] };
+
+      // Detaylı bilgileri fetch et
+      data = await db.query.projects.findMany({
+        where: sql`${projects.id} IN (${sql.join(projectIds.map(id => sql`${id}`), sql`, `)})`,
+        limit: limit,
+        orderBy: [desc(projects.createdAt)],
+        with: {
+          manager: true,
+          creator: true
+        }
+      });
+    }
 
     return { success: true, projects: data };
   } catch (err: any) {
@@ -31,7 +70,7 @@ export async function getProjectsAction(limit = 10) {
 }
 
 /**
- * Tek bir proje detayını getirir.
+ * Tek bir proje detayını getirir (Yetki Kontrollü).
  */
 export async function getProjectAction(projectId: string) {
   try {
@@ -51,11 +90,29 @@ export async function getProjectAction(projectId: string) {
             assignee: true,
             attachments: true
           }
-        }
+        },
+        attachments: true
       }
     });
 
     if (!project) return { success: false, error: 'Proje bulunamadı.' };
+
+    // RBAC Kontrolü
+    const userProfile = await db.query.profiles.findFirst({
+      where: eq(profiles.id, userId)
+    });
+    
+    const isHighRole = userProfile && ['Patron', 'Genel Müdür', 'Admin'].includes(userProfile.role);
+    
+    if (!isHighRole) {
+      const isManager = project.managerId === userId;
+      const hasAssignedTask = project.tasks.some(t => t.assigneeId === userId);
+      
+      if (!isManager && !hasAssignedTask) {
+        // Yetkisiz erişim
+        return { success: false, error: 'Bu projeye erişim yetkiniz yok.', status: 403 };
+      }
+    }
 
     return { success: true, project };
   } catch (err: any) {
@@ -64,6 +121,7 @@ export async function getProjectAction(projectId: string) {
   }
 }
 
+
 /**
  * Yeni proje oluşturur.
  */
@@ -71,7 +129,8 @@ export async function createProjectAction(params: {
   name: string,
   description?: string,
   color?: string,
-  managerId?: string
+  managerId?: string,
+  attachment?: { url: string, name: string, size?: number, type?: string }
 }) {
   try {
     const { userId, orgId } = await auth();
@@ -89,12 +148,26 @@ export async function createProjectAction(params: {
       status: 'active'
     }).returning();
 
+    // Eğer ek varsa kaydet
+    if (params.attachment) {
+      await db.insert(projectAttachments).values({
+        id: crypto.randomUUID(),
+        projectId: projectId,
+        fileName: params.attachment.name,
+        fileUrl: params.attachment.url,
+        fileSize: params.attachment.size,
+        fileType: params.attachment.type,
+        createdBy: userId
+      });
+    }
+
     return { success: true, project: newProject };
   } catch (err: any) {
     console.error('PROJE OLUSTURMA HATASI:', err);
     return { success: false, error: err.message };
   }
 }
+
 
 /**
  * Organizasyon üyelerini profil bilgileriyle getirir.
@@ -174,3 +247,36 @@ export async function createCellAction(name: string, description?: string) {
     return { success: false, error: err.message };
   }
 }
+
+/**
+ * Proje Eklerini Kaydetme (UploadThing sonrası)
+ */
+export async function addProjectAttachmentAction(params: {
+  projectId: string,
+  fileName: string,
+  fileUrl: string,
+  fileSize?: number,
+  fileType?: string
+}) {
+  try {
+    const { userId, orgId } = await auth();
+    if (!userId || !orgId) return { success: false, error: 'Oturum açılmamış.' };
+
+    const attachmentId = crypto.randomUUID();
+    const [attachment] = await db.insert(projectAttachments).values({
+      id: attachmentId,
+      projectId: params.projectId,
+      fileName: params.fileName,
+      fileUrl: params.fileUrl,
+      fileSize: params.fileSize,
+      fileType: params.fileType,
+      createdBy: userId
+    }).returning();
+
+    return { success: true, attachment };
+  } catch (err: any) {
+    console.error('PROJE EKLERİ KAYIT HATASI:', err);
+    return { success: false, error: err.message };
+  }
+}
+

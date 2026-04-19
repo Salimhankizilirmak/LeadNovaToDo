@@ -5,10 +5,12 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { X, Loader2, ClipboardCheck } from 'lucide-react';
+import { X, Loader2, ClipboardCheck, Paperclip, FileCheck } from 'lucide-react';
 import { useUser } from '@clerk/nextjs';
 import { createTaskAction } from '@/app/actions/tasks';
 import { Task, Member } from '@/types/task';
+import { UploadButton } from '@/utils/uploadthing';
+
 
 /* ── Zod Şeması ─────────────────────────────────────────────── */
 const schema = z.object({
@@ -42,6 +44,8 @@ export default function CreateTaskModal({
   const { user } = useUser();
   const userId = user?.id ?? null;
   const [submitting, setSubmitting] = useState(false);
+  const [attachment, setAttachment] = useState<{ url: string, name: string, size?: number, type?: string } | null>(null);
+
 
   const {
     register,
@@ -70,7 +74,9 @@ export default function CreateTaskModal({
         orgId: orgId,
         assigneeId: values.assigneeId,
         dueDate: values.dueDate,
+        attachment: attachment || undefined
       });
+
 
       if (!result.success) throw new Error(result.error || 'Görev oluşturulamadı');
 
@@ -198,6 +204,55 @@ export default function CreateTaskModal({
               className="w-full px-4 py-3 text-sm rounded-xl border border-gray-100 bg-gray-50 text-gray-900 focus:bg-white focus:border-indigo-400 transition-all outline-none cursor-pointer"
             />
           </div>
+
+          {/* Görev Eki (Optional) */}
+          <div className="p-4 bg-gray-50 rounded-2xl border border-dashed border-gray-100">
+             <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <Paperclip size={14} className="text-gray-400" />
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Görev Materyali</span>
+                </div>
+                {!attachment ? (
+                    <UploadButton
+                        endpoint="taskAttachment"
+                        onClientUploadComplete={(res) => {
+                            if (res) {
+                                setAttachment({
+                                    url: res[0].url,
+                                    name: res[0].name,
+                                    size: res[0].size,
+                                    type: res[0].type
+                                });
+                                toast.success('Materyal yüklendi!');
+                            }
+                        }}
+                        appearance={{
+                            button: "text-[10px] font-black bg-white text-indigo-600 px-3 py-1.5 rounded-lg border border-indigo-100 hover:bg-indigo-50 transition-all h-auto",
+                            allowedContent: "hidden"
+                        }}
+                        content={{
+                            button: ({ ready }) => ready ? "YÜKLE" : "..."
+                        }}
+                    />
+                ) : (
+                    <div className="flex items-center gap-2 text-emerald-600">
+                        <FileCheck size={14} />
+                        <span className="text-[9px] font-black uppercase">Tamam</span>
+                        <button 
+                            type="button"
+                            onClick={() => setAttachment(null)}
+                            className="text-[9px] text-red-500 font-bold hover:underline"
+                        >
+                            SİL
+                        </button>
+                    </div>
+                )}
+             </div>
+             {attachment && (
+                 <p className="mt-2 text-[9px] text-gray-400 font-bold truncate tracking-tight">{attachment.name}</p>
+             )}
+          </div>
+
 
           <div className="flex gap-3 pt-2">
             <button

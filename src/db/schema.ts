@@ -40,7 +40,9 @@ export const profilesRelations = relations(profiles, ({ one, many }) => ({
   assignedTasks: many(tasks, { relationName: 'assignee' }),
   createdTasks: many(tasks, { relationName: 'creator' }),
   managedProjects: many(projects, { relationName: 'manager' }),
+  projectMessages: many(projectMessages),
 }));
+
 
 // 3. Projeler
 export const projects = sqliteTable('projects', {
@@ -69,7 +71,10 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
     references: [profiles.id],
   }),
   tasks: many(tasks),
+  messages: many(projectMessages),
+  attachments: many(projectAttachments),
 }));
+
 
 // 4. Görevler
 export const tasks = sqliteTable('tasks', {
@@ -182,3 +187,47 @@ export const orgMembersRelations = relations(orgMembers, ({ one }) => ({
     references: [profiles.id],
   }),
 }));
+
+// 8. Proje İçi Sohbet (Project Chat)
+export const projectMessages = sqliteTable('project_messages', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id),
+  userId: text('user_id').notNull().references(() => profiles.id),
+  message: text('message').notNull(),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const projectMessagesRelations = relations(projectMessages, ({ one }) => ({
+  project: one(projects, {
+    fields: [projectMessages.projectId],
+    references: [projects.id],
+  }),
+  user: one(profiles, {
+    fields: [projectMessages.userId],
+    references: [profiles.id],
+  }),
+}));
+
+// 9. Proje Ekleri (Project Attachments)
+export const projectAttachments = sqliteTable('project_attachments', {
+  id: text('id').primaryKey(),
+  projectId: text('project_id').notNull().references(() => projects.id),
+  fileName: text('file_name').notNull(),
+  fileUrl: text('file_url').notNull(),
+  fileType: text('file_type'),
+  fileSize: integer('file_size'),
+  createdBy: text('created_by').notNull().references(() => profiles.id),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const projectAttachmentsRelations = relations(projectAttachments, ({ one }) => ({
+  project: one(projects, {
+    fields: [projectAttachments.projectId],
+    references: [projects.id],
+  }),
+  creator: one(profiles, {
+    fields: [projectAttachments.createdBy],
+    references: [profiles.id],
+  }),
+}));
+

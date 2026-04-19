@@ -7,20 +7,17 @@ import {
   ChevronRight,
   LayoutGrid,
   Layers,
+  Target,
+  Users,
 } from 'lucide-react';
 import Link from 'next/link';
 import { getDashboardDataAction } from '@/app/actions/tasks';
 import { getProjectsAction } from '@/app/actions/projects';
+import { getAdminStatsAction, getChartDataAction, getLeaderboardAction } from '@/app/actions/dashboard';
+import DashboardCharts from '@/components/dashboard/DashboardCharts';
+import Leaderboard from '@/components/dashboard/Leaderboard';
 
 export const dynamic = 'force-dynamic';
-
-/* ── Tipler ─────────────────────────────────────────────────── */
-interface DashboardStats {
-  total: number;
-  completed: number;
-  pending: number;
-  critical: number;
-}
 
 /* ── Bileşenler ─────────────────────────────────────────────── */
 function StatCard({ 
@@ -42,7 +39,7 @@ function StatCard({
         <div className={`p-3 rounded-2xl ${color} transition-colors`}>
           <Icon className="w-6 h-6" />
         </div>
-        {trend && value > 0 && (
+        {trend && (
           <span className="text-[10px] font-black bg-emerald-50 text-emerald-600 px-2.5 py-1 rounded-full border border-emerald-100 uppercase tracking-tight">
             {trend}
           </span>
@@ -58,10 +55,10 @@ function StatCard({
 
 /* ── Ana Sayfa (Server Component) ─────────────────────────── */
 export default async function DashboardPage() {
-  const { userId } = await auth();
+  const { userId, orgId } = await auth();
   const user = await currentUser();
 
-  if (!userId || !user) {
+  if (!userId || !user || !orgId) {
     return (
       <div className="h-[60vh] flex items-center justify-center">
         <p className="text-gray-500 font-medium">Oturum açılmamış. Lütfen giriş yapın.</p>
@@ -69,17 +66,27 @@ export default async function DashboardPage() {
     );
   }
 
-  // Verileri Server Action'lar üzerinden çek (Drizzle & Manual RLS)
-  const [dashboardResp, projectsResp] = await Promise.all([
+  const myRole = user.publicMetadata?.role as string;
+  const isHighRole = ['Patron', 'Genel Müdür', 'Admin'].includes(myRole);
+
+  // Verileri çek
+  const [dashboardResp, projectsResp, adminStatsResp, chartResp, leaderResp] = await Promise.all([
     getDashboardDataAction(),
-    getProjectsAction(3)
+    getProjectsAction(5),
+    isHighRole ? getAdminStatsAction() : Promise.resolve({ success: false as const }),
+    isHighRole ? getChartDataAction() : Promise.resolve({ success: false as const }),
+    isHighRole ? getLeaderboardAction() : Promise.resolve({ success: false as const })
   ]);
 
   const tasks = dashboardResp.success ? dashboardResp.tasks : [];
-  const stats = dashboardResp.success ? (dashboardResp.stats as DashboardStats) : { total: 0, completed: 0, pending: 0, critical: 0 };
   const projects = projectsResp.success ? projectsResp.projects : [];
-
+  
   const displayName = user?.firstName || user?.emailAddresses[0]?.emailAddress?.split('@')[0] || 'Kullanıcı';
+
+  // TypeScript tip kısıtlamalarını aşmak için basitleştirilmiş erişim
+  const adminStats = (isHighRole && adminStatsResp.success) ? (adminStatsResp as any).stats : null;
+  const chartData = (isHighRole && chartResp.success) ? (chartResp as any) : null;
+  const leaderBoardData = (isHighRole && leaderResp.success) ? (leaderResp as any).leaderboard : null;
 
   return (
     <div className="space-y-10 pb-10">
@@ -88,44 +95,84 @@ export default async function DashboardPage() {
           Merhaba, {displayName}! 👋
         </h1>
         <p className="text-gray-500 font-medium">
-          İşte bugün için odaklanman gerekenler.
+          {isHighRole ? 'LeadNova Genel Analitik Paneli' : 'İşte bugün için odaklanman gerekenler.'}
         </p>
       </div>
 
+      {/* KPI Kartları (Yönetici Özeli veya Kişisel Özet) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard 
-          title="Toplam Görev" 
-          value={stats.total} 
-          icon={Layers} 
-          color="bg-indigo-50 text-indigo-600" 
-        />
-        <StatCard 
-          title="Tamamlanan" 
-          value={stats.completed} 
-          icon={CheckCircle2} 
-          color="bg-emerald-50 text-emerald-600" 
-          trend="+12%"
-        />
-        <StatCard 
-          title="Bekleyen" 
-          value={stats.pending} 
-          icon={Clock} 
-          color="bg-amber-50 text-amber-600" 
-        />
-        <StatCard 
-          title="Kritik" 
-          value={stats.critical} 
-          icon={AlertCircle} 
-          color="bg-rose-50 text-rose-600" 
-        />
+        {adminStats ? (
+          <>
+            <StatCard 
+              title="Aktif Görevler" 
+              value={adminStats.activeTasks} 
+              icon={Layers} 
+              color="bg-indigo-50 text-indigo-600" 
+            />
+            <StatCard 
+              title="Tamamlanan" 
+              value={adminStats.completedTasks} 
+              icon={CheckCircle2} 
+              color="bg-emerald-50 text-emerald-600" 
+            />
+            <StatCard 
+              title="Geciken Görev" 
+              value={adminStats.overdueTasks} 
+              icon={Clock} 
+              color="bg-rose-50 text-rose-600" 
+            />
+            <StatCard 
+              title="Toplam Proje" 
+              value={adminStats.totalProjects} 
+              icon={Target} 
+              color="bg-amber-50 text-amber-600" 
+            />
+          </>
+        ) : (
+          <>
+            <StatCard 
+              title="Genel Görevlerin" 
+              value={dashboardResp.stats?.total || 0} 
+              icon={Layers} 
+              color="bg-indigo-50 text-indigo-600" 
+            />
+            <StatCard 
+              title="Senin Tamamladıkların" 
+              value={dashboardResp.stats?.completed || 0} 
+              icon={CheckCircle2} 
+              color="bg-emerald-50 text-emerald-600" 
+            />
+            <StatCard 
+              title="Bekleyen" 
+              value={dashboardResp.stats?.pending || 0} 
+              icon={Clock} 
+              color="bg-amber-50 text-amber-600" 
+            />
+            <StatCard 
+              title="Kritik" 
+              value={dashboardResp.stats?.critical || 0} 
+              icon={AlertCircle} 
+              color="bg-rose-50 text-rose-600" 
+            />
+          </>
+        )}
       </div>
 
+      {/* Grafikler (Sadece Üst Roller) */}
+      {chartData && (
+        <DashboardCharts 
+            statusData={chartData.statusDistribution} 
+            workloadData={chartData.departmentWorkload} 
+        />
+      )}
+
+      {/* Alt Katman: Son Görevler ve Leaderboard/Projeler */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         <div className="xl:col-span-2 space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-black text-gray-900 tracking-tight flex items-center gap-2">
-              Son Görevler
-              <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Yeni</span>
+              {isHighRole ? 'Organizasyonel Akış' : 'Son Görevlerin'}
+              <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">Canlı</span>
             </h2>
             <Link href="/dashboard/projects" className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 transition-colors">
               Tümünü Gör <ChevronRight size={14} />
@@ -153,9 +200,9 @@ export default async function DashboardPage() {
                         </div>
                       </div>
                     </div>
-                    <button className="opacity-0 group-hover:opacity-100 p-2 hover:bg-white rounded-xl transition-all shadow-sm">
+                    <Link href={`/dashboard/projects/${task.projectId}`} className="opacity-0 group-hover:opacity-100 p-2 hover:bg-white rounded-xl transition-all shadow-sm">
                       <ChevronRight size={18} className="text-gray-400" />
-                    </button>
+                    </Link>
                   </div>
                 ))}
               </div>
@@ -174,41 +221,48 @@ export default async function DashboardPage() {
         </div>
 
         <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-black text-gray-900 tracking-tight">Aktif Projeler</h2>
-            <Link href="/dashboard/projects" className="p-2 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-colors">
-              <Plus size={18} />
-            </Link>
-          </div>
-
-          <div className="space-y-4">
-            {projects && projects.length > 0 ? (
-              projects.map((project: any) => (
-                <div key={project.id} className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm hover:border-indigo-100 transition-all cursor-pointer">
-                  <div className="flex items-center gap-3">
-                    <div className="w-1.5 h-10 rounded-full" style={{ backgroundColor: project.color }} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-black text-gray-900 truncate">{project.name}</p>
-                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Aktif</p>
-                    </div>
-                  </div>
+           {leaderBoardData ? (
+               <Leaderboard data={leaderBoardData} />
+           ) : (
+            <>
+                <div className="flex items-center justify-between">
+                    <h2 className="text-xl font-black text-gray-900 tracking-tight">Aktif Projeler</h2>
+                    <Link href="/dashboard/projects" className="p-2 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-colors">
+                    <Plus size={18} />
+                    </Link>
                 </div>
-              ))
-            ) : (
-              <div className="p-10 border-2 border-dashed border-gray-100 rounded-[2rem] text-center">
-                <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">Henüz Proje Yok</p>
-              </div>
-            )}
-            
-            <Link 
-              href="/dashboard/projects" 
-              className="flex items-center justify-center p-5 bg-gray-50 rounded-3xl border border-gray-100 text-xs font-black text-gray-400 uppercase tracking-widest hover:bg-gray-100 hover:text-gray-600 transition-all"
-            >
-              Tüm Projeleri Keşfet
-            </Link>
-          </div>
+
+                <div className="space-y-4">
+                    {projects && projects.length > 0 ? (
+                    projects.map((project: any) => (
+                        <Link href={`/dashboard/projects/${project.id}`} key={project.id} className="block bg-white p-5 rounded-3xl border border-gray-100 shadow-sm hover:border-indigo-100 transition-all cursor-pointer">
+                            <div className="flex items-center gap-3">
+                                <div className="w-1.5 h-10 rounded-full" style={{ backgroundColor: project.color }} />
+                                <div className="flex-1 min-w-0">
+                                <p className="text-sm font-black text-gray-900 truncate">{project.name}</p>
+                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">Yönetici: {project.manager?.fullName?.split(' ')[0]}</p>
+                                </div>
+                            </div>
+                        </Link>
+                    ))
+                    ) : (
+                    <div className="p-10 border-2 border-dashed border-gray-100 rounded-[2rem] text-center">
+                        <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">Henüz Proje Yok</p>
+                    </div>
+                    )}
+                    
+                    <Link 
+                        href="/dashboard/projects" 
+                        className="flex items-center justify-center p-5 bg-gray-50 rounded-3xl border border-gray-100 text-xs font-black text-gray-400 uppercase tracking-widest hover:bg-gray-100 hover:text-gray-600 transition-all"
+                    >
+                        Tüm Projeleri Keşfet
+                    </Link>
+                </div>
+            </>
+           )}
         </div>
       </div>
     </div>
   );
 }
+

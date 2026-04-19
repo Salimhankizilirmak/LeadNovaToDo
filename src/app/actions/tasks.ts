@@ -14,6 +14,7 @@ interface CreateTaskParams {
   priority: 'low' | 'medium' | 'high' | 'critical';
   assigneeId?: string | null;
   dueDate?: string | null;
+  attachment?: { url: string, name: string, size?: number, type?: string };
 }
 
 /**
@@ -48,7 +49,21 @@ export async function createTaskAction(params: CreateTaskParams) {
       status: 'todo',
     }).returning();
 
+    // 1a. Eğer ek varsa kaydet
+    if (params.attachment) {
+      await db.insert(taskAttachments).values({
+        id: crypto.randomUUID(),
+        taskId: taskId,
+        fileName: params.attachment.name,
+        fileUrl: params.attachment.url,
+        fileSize: params.attachment.size,
+        fileType: params.attachment.type,
+        createdBy: userId
+      });
+    }
+
     // Proje bilgilerini join ile çek (E-posta için)
+
     const project = await db.query.projects.findFirst({
       where: eq(projects.id, params.projectId)
     });

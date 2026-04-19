@@ -22,8 +22,8 @@ export async function syncProfile() {
     const superAdmins = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAILS?.split(',') || [];
     const isSuperAdmin = superAdmins.includes(userEmail);
     
-    // 2. Patron Tanıma Mantığı (Admin Panel Kaydı ile Eşleştirme)
-    const ownedOrg = await db.query.organizations.findFirst({
+    // 2. Patron Tanıma Mantığı (Admin Panel Kaydı veya OwnerId eşleşmesi)
+    const ownedOrgByEmail = await db.query.organizations.findFirst({
       where: eq(organizations.ownerEmail, userEmail)
     });
 
@@ -31,21 +31,21 @@ export async function syncProfile() {
     let finalRole: UserRole = 'Personel';
     let isAuthorized = false;
 
-    // 2a. Eğer Kullanıcı bir Patron ise
-    if (ownedOrg) {
-      targetOrgId = ownedOrg.id;
+    // 2a. Eğer Kullanıcı bir Patron ise (Email bazlı)
+    if (ownedOrgByEmail) {
+      targetOrgId = ownedOrgByEmail.id;
       finalRole = 'Patron';
       isAuthorized = true;
-      console.log('[Sync] Kullanıcı Patron olarak tanındı:', ownedOrg.name);
+      console.log('[Sync] Kullanıcı Patron olarak tanındı (Email):', ownedOrgByEmail.name);
     } 
-    // 2b. Eğer Süper Admin ise - Süper Adminlerin HER ŞEYE yetkisi olmalı
+    // 2b. Eğer Süper Admin ise
     else if (isSuperAdmin) {
       finalRole = 'Patron';
       isAuthorized = true;
       console.log('[Sync] Kullanıcı Süper Admin olarak tanındı.');
     }
 
-    // 3. Organizasyon Bilgisini Garantile (Eğer Patron/Süper Admin değilse üyelik bak)
+    // 3. Organizasyon Bilgisini Garantile
     const clerk = await getClerkClient();
     if (!targetOrgId) {
       const memberships = await clerk.users.getOrganizationMembershipList({ userId });
@@ -54,54 +54,59 @@ export async function syncProfile() {
         isAuthorized = true;
       }
     } else {
-      isAuthorized = true; // Zaten bir orgId varsa (session/patron/superadmin) yetkilidir
+      isAuthorized = true; 
     }
 
-    // 3a. Erişim Kontrolü (Gatekeeper) - Ne Patron ne de Üye ise engelle
-    if (!isAuthorized) {
-      console.warn('[Sync] Yetkisiz Erişim Denemesi:', userEmail);
-      // Burada bir hata fırlatabiliriz veya success false dönebiliriz. 
-      // Layout tarafı bunu handle etmeli.
-      return { success: false, error: 'ACCESS_DENIED', message: 'Herhangi bir organizasyon davetiniz bulunmuyor.' };
-    }
-
-    // 4. Organizations Tablosunu Önceden Besle (FK Kalkanı)
+    // 4. Organizations Tablosunu Güncelle ve OwnerID Kontrolü Yap
     if (targetOrgId) {
-      console.log('[Sync] Organizasyon detayları Clerk\'ten çekiliyor...', targetOrgId);
       try {
         const orgDetail = await clerk.organizations.getOrganization({ organizationId: targetOrgId });
+        
+        // KRİTİK: Eğer kullanıcı organizasyonun yaratıcısı (owner) ise rolü otomatik Patron yap
+        if (orgDetail.createdBy === userId || (ownedOrgByEmail && ownedOrgByEmail.id === targetOrgId)) {
+          finalRole = 'Patron';
+        }
+
         await db.insert(organizations).values({
           id: targetOrgId,
           name: orgDetail.name,
           ownerId: orgDetail.createdBy || userId,
-          ownerEmail: ownedOrg?.ownerEmail || "" 
+          ownerEmail: ownedOrgByEmail?.ownerEmail || "" 
         }).onConflictDoUpdate({
           target: organizations.id,
           set: {
             name: orgDetail.name,
             ownerId: orgDetail.createdBy || userId,
-            // ownerEmail değişmez
           }
         });
-        console.log('[Sync] Organizations tablosu güncellendi.');
       } catch (orgErr) {
         console.error('[Sync] Organizations upsert hatası:', orgErr);
       }
     }
 
-    // 5. Mevcut Profili Sorgula (Rol Koruması İçin)
+    if (!isAuthorized) {
+      return { success: false, error: 'ACCESS_DENIED', message: 'Herhangi bir organizasyon davetiniz bulunmuyor.' };
+    }
+
+    // 5. Mevcut Profili Sorgula
     const existingProfile = await db.query.profiles.findFirst({
       where: eq(profiles.id, userId),
     });
 
-    // Rol Belirleme Mantığı (Eğer Patron/SuperAdmin değilse metadata veya mevcut profil bak)
+    // Rol Belirleme Mantığı (Eğer Patron değilse metadata veya mevcut profil bak)
     if (finalRole !== 'Patron') {
       finalRole = (user.publicMetadata?.role as UserRole) || (existingProfile?.role as UserRole) || 'Personel';
     }
 
-    const full_name = `${user.firstName || ''} ${user.lastName || ''}`.trim() || userEmail || 'Kullanıcı';
+    // Ekstra Kontrol: Veritabanındaki organizasyon kaydıyla ownerId eşleşiyorsa Patron yap
+    if (targetOrgId && finalRole !== 'Patron') {
+       const orgRecord = await db.query.organizations.findFirst({ where: eq(organizations.id, targetOrgId) });
+       if (orgRecord?.ownerId === userId) {
+         finalRole = 'Patron';
+       }
+    }
 
-    console.log('[Sync] Drizzle Upsert işlemi başlatılıyor...', { userId, targetOrgId, finalRole });
+    const full_name = `${user.firstName || ''} ${user.lastName || ''}`.trim() || userEmail || 'Kullanıcı';
 
     // 6. Drizzle Profiles Upsert
     const [updatedProfile] = await db.insert(profiles).values({
@@ -124,34 +129,23 @@ export async function syncProfile() {
       }
     }).returning();
 
-    console.log('[Sync] Başarılı! Profil güncellendi. Rol:', updatedProfile.role, 'Org:', updatedProfile.orgId);
-
-    // 7. Organizasyon Bağını Garantile (Multi-tenant Sync - Manuel Upsert)
-    if (targetOrgId) {
-      console.log('[Sync] OrgMembers bağı kontrol ediliyor...', { userId, targetOrgId });
-      
-      const existingMember = await db.query.orgMembers.findFirst({
-        where: and(
-          eq(orgMembers.orgId, targetOrgId),
-          eq(orgMembers.userId, userId)
-        )
+    // Clerk metadata senkronizasyonu
+    if (finalRole === 'Patron' && user.publicMetadata?.role !== 'Patron') {
+      await clerk.users.updateUserMetadata(userId, {
+        publicMetadata: { role: 'Patron' }
       });
+    }
 
-      if (existingMember) {
-        await db.update(orgMembers)
-          .set({ role: finalRole })
-          .where(and(
-            eq(orgMembers.orgId, targetOrgId),
-            eq(orgMembers.userId, userId)
-          ));
-      } else {
-        await db.insert(orgMembers).values({
-          orgId: targetOrgId,
-          userId: userId,
-          role: finalRole
-        });
-      }
-      console.log('[Sync] OrgMembers bağı başarıyla kuruldu/güncellendi.');
+    // 7. Organizasyon Bağını Garantile
+    if (targetOrgId) {
+      await db.insert(orgMembers).values({
+        orgId: targetOrgId,
+        userId: userId,
+        role: finalRole
+      }).onConflictDoUpdate({
+        target: [orgMembers.orgId, orgMembers.userId],
+        set: { role: finalRole }
+      });
     }
 
     return { success: true, profile: updatedProfile };

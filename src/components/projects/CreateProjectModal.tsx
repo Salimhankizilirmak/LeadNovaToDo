@@ -5,9 +5,11 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { X, Loader2, FolderPlus } from 'lucide-react';
+import { X, Loader2, FolderPlus, Paperclip, FileCheck } from 'lucide-react';
 import { useUser, useOrganization } from '@clerk/nextjs';
 import { createProjectAction, getOrgMembersAction } from '@/app/actions/projects';
+import { UploadButton } from '@/utils/uploadthing';
+
 
 /* ── Tipler ─────────────────────────────────────────────────── */
 export interface Project {
@@ -53,6 +55,8 @@ export default function CreateProjectModal({
   const [selectedColor, setSelectedColor] = useState(COLOR_OPTIONS[0].hex);
   const [submitting, setSubmitting] = useState(false);
   const [members, setMembers] = useState<any[]>([]);
+  const [attachment, setAttachment] = useState<{ url: string, name: string, size?: number, type?: string } | null>(null);
+
 
   const {
     register,
@@ -85,7 +89,8 @@ export default function CreateProjectModal({
         name: values.name,
         description: values.description,
         color: selectedColor,
-        managerId: values.managerId || undefined
+        managerId: values.managerId || undefined,
+        attachment: attachment || undefined
       });
 
       if (!result.success) throw new Error(result.error);
@@ -172,6 +177,55 @@ export default function CreateProjectModal({
               className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 bg-gray-50 text-gray-900 placeholder-gray-400 outline-none focus:border-indigo-400 focus:bg-white transition-colors resize-none"
             />
           </div>
+
+          {/* Dosya Eki (Brief) */}
+          <div className="p-4 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+             <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <Paperclip size={16} className="text-gray-400" />
+                    <span className="text-xs font-bold text-gray-700 uppercase tracking-tight">Proje Dosyası / Brief</span>
+                </div>
+                {!attachment ? (
+                    <UploadButton
+                        endpoint="projectAttachment"
+                        onClientUploadComplete={(res) => {
+                            if (res) {
+                                setAttachment({
+                                    url: res[0].url,
+                                    name: res[0].name,
+                                    size: res[0].size,
+                                    type: res[0].type
+                                });
+                                toast.success('Dosya hazır!');
+                            }
+                        }}
+                        appearance={{
+                            button: "text-[10px] font-black bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-all h-auto",
+                            allowedContent: "hidden"
+                        }}
+                        content={{
+                            button: ({ ready }) => ready ? "DOSYA SEÇ" : "..."
+                        }}
+                    />
+                ) : (
+                    <div className="flex items-center gap-2 text-emerald-600">
+                        <FileCheck size={16} />
+                        <span className="text-[10px] font-black uppercase">Yüklendi</span>
+                        <button 
+                            type="button"
+                            onClick={() => setAttachment(null)}
+                            className="text-[9px] text-red-500 font-bold hover:underline ml-1"
+                        >
+                            SİL
+                        </button>
+                    </div>
+                )}
+             </div>
+             {attachment && (
+                 <p className="mt-2 text-[10px] text-gray-400 font-medium truncate">{attachment.name}</p>
+             )}
+          </div>
+
 
           {/* Renk Seçici */}
           <div>
