@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { X, Calendar, Type, AlignLeft, Flag, Save, Trash2, Loader2, User as UserIcon } from 'lucide-react';
 import { toast } from 'sonner';
-import { createClient } from '@/utils/supabase/client';
+import { createClerkClient } from '@/utils/supabase/client';
+import { useAuth } from '@clerk/nextjs';
 
 /* ── Tipler ─────────────────────────────────────────────────── */
 interface Member {
@@ -20,6 +21,8 @@ interface Task {
   priority: 'low' | 'medium' | 'high' | 'critical';
   due_date: string | null;
   assignee_id: string | null;
+  created_by: string;
+  org_id: string;
 }
 
 /* ── Props ──────────────────────────────────────────────────── */
@@ -40,6 +43,7 @@ export default function TaskSlideOver({
   onUpdated,
   onDeleted,
 }: TaskSlideOverProps) {
+  const { getToken } = useAuth();
   const [title, setTitle] = useState(task?.title || '');
   const [description, setDescription] = useState(task?.description || '');
   const [priority, setPriority] = useState<Task['priority']>((task?.priority as Task['priority']) || 'medium');
@@ -55,7 +59,11 @@ export default function TaskSlideOver({
     // but here we'll use it for the immediate update logic if needed.
     setSaving(true);
     try {
-      const supabase = createClient();
+      const token = await getToken({ template: 'supabase' });
+      if (!token) throw new Error('Oturum anahtarı alınamadı.');
+      
+      const supabase = createClerkClient(token);
+      
       const payload = {
         title,
         description,
@@ -79,7 +87,8 @@ export default function TaskSlideOver({
     } catch (err: any) {
       console.error('GÖREV GÜNCELLEME HATASI:', err);
       const errorMessage = err.message || 'Girişler kaydedilirken bir hata oluştu.';
-      toast.error(errorMessage);
+      const detail = err.details ? ` (${err.details})` : '';
+      toast.error(`${errorMessage}${detail}`);
     } finally {
       setSaving(false);
     }
@@ -104,7 +113,10 @@ export default function TaskSlideOver({
     
     setDeleting(true);
     try {
-      const supabase = createClient();
+      const token = await getToken({ template: 'supabase' });
+      if (!token) throw new Error('Oturum anahtarı alınamadı.');
+      
+      const supabase = createClerkClient(token);
       const { error } = await supabase.from('tasks').delete().eq('id', task.id);
       
       if (error) throw error;
@@ -112,8 +124,11 @@ export default function TaskSlideOver({
       toast.success('Görev silindi');
       onDeleted(task.id);
       onClose();
-    } catch {
-      toast.error('Görev silinirken bir hata oluştu.');
+    } catch (err: any) {
+      console.error('GÖREV SİLME HATASI:', err);
+      const errorMessage = err.message || 'Görev silinirken bir hata oluştu.';
+      const detail = err.details ? ` (${err.details})` : '';
+      toast.error(`${errorMessage}${detail}`);
     } finally {
       setDeleting(false);
     }
