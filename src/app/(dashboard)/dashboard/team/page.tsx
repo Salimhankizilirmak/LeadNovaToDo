@@ -86,8 +86,14 @@ export default function TeamPage() {
   const [updatingRoleId, setUpdatingRoleId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Mevcut kullanıcının endüstriyel rolü
-  const myIndustrialRole = user?.publicMetadata?.role as UserRole;
+  // 1. Clerk'ten gelen ham rol
+  const clerkRole = user?.publicMetadata?.role as UserRole;
+  
+  // 2. State'te tutulan, profil verisinden gelen rol (Fallback)
+  const [profileRole, setProfileRole] = useState<UserRole | null>(null);
+
+  // Nihai yetkili rol tespiti
+  const myIndustrialRole = profileRole || clerkRole || 'Personel';
   const canEditRoles = myIndustrialRole === 'Patron' || myIndustrialRole === 'Genel Müdür' || myIndustrialRole === 'Admin';
 
   const fetchMembers = async () => {
@@ -95,7 +101,6 @@ export default function TeamPage() {
     try {
       const supabase = await getSupabase();
       
-      // Tüm üyeleri profiles tablosundan çek (org_id üzerinden filtrele)
       const { data: memberList, error: listError } = await supabase
         .from('profiles')
         .select('*')
@@ -103,12 +108,19 @@ export default function TeamPage() {
 
       if (listError) throw listError;
       
-      const formattedMembers = (memberList?.map(m => ({
-        user_id: m.id,
-        role: m.role || 'Personel',
-        email: m.email || '',
-        display_name: m.full_name || 'İsimsiz Üye'
-      })) as TeamMember[]) || [];
+      const formattedMembers = (memberList?.map(m => {
+        // Eğer bu üye bizsek, rolümüzü tespit edelim
+        if (m.id === userId) {
+          setProfileRole(m.role as UserRole);
+        }
+
+        return {
+          user_id: m.id,
+          role: m.role || 'Personel',
+          email: m.email || '',
+          display_name: m.full_name || 'İsimsiz Üye'
+        };
+      }) as TeamMember[]) || [];
 
       setMembers(formattedMembers);
     } catch (err) {
