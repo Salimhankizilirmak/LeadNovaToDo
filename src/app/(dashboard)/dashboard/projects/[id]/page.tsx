@@ -82,7 +82,7 @@ export default function ProjectDetailPage() {
         // 3. Fetch Tasks with profile join for assignee
         const { data: taskData, error: taskError } = await supabase
           .from('tasks')
-          .select('*, assignee:profiles(full_name, avatar_url, role)')
+          .select('*, assignee:profiles!fk_tasks_assignee(full_name, avatar_url, role)')
           .eq('project_id', id)
           .order('created_at', { ascending: false });
 

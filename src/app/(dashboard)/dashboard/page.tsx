@@ -66,10 +66,9 @@ export default async function DashboardPage() {
 
   const supabase = await createClerkClient(token);
 
-  // Verileri çek (Organizasyon varsa organizasyona, yoksa kullanıcıya göre filtrele)
   const taskQuery = supabase
     .from('tasks')
-    .select('*, project:projects!tasks_project_id_fkey(name, color), assignee:profiles(full_name, avatar_url)')
+    .select('*, project:projects!tasks_project_id_fkey(name, color), assignee:profiles!fk_tasks_assignee(full_name, avatar_url)')
     .eq('assignee_id', userId)
     .order('created_at', { ascending: false })
     .limit(5);
