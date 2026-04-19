@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { X, Loader2, FolderPlus } from 'lucide-react';
-import { useUser } from '@clerk/nextjs';
+import { useUser, useOrganization } from '@clerk/nextjs';
 import { useSupabase } from '@/hooks/use-supabase';
 
 /* ── Tipler ─────────────────────────────────────────────────── */
@@ -38,18 +38,57 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 /* ── Organizasyon Yardımcısı ────────────────────────────────── */
-async function ensureOrgId(supabase: any, userId: string): Promise<string> {
-  // Kullanıcının mevcut organizasyonunu bul
-  const { data: memberRow } = await supabase
+async function ensureOrgId(supabase: any, userId: string, clerkOrgId?: string | null): Promise<string> {
+  // 1. Eğer Clerk üzerinde bir organizasyon seçiliyse, onu öncelikli kılalım
+  if (clerkOrgId) {
+    // Supabase'de bu organizasyon var mı kontrol et, yoksa kaydet
+    const { data: existingOrg } = await supabase
+      .from('organizations')
+      .select('id')
+      .eq('id', clerkOrgId)
+      .single();
+
+    if (!existingOrg) {
+      await supabase.from('organizations').insert({
+        id: clerkOrgId,
+        name: 'Clerk Organizasyonu',
+        owner_id: userId
+      });
+    }
+
+    // Üyelik kaydı (org_members) kontrolü ve ekleme
+    const { data: member } = await supabase
+      .from('org_members')
+      .select('id')
+      .eq('org_id', clerkOrgId)
+      .eq('user_id', userId)
+      .single();
+
+    if (!member) {
+      await supabase.from('org_members').insert({
+        org_id: clerkOrgId,
+        user_id: userId,
+        role: 'admin'
+      });
+    }
+
+    return clerkOrgId;
+  }
+
+  // 2. Clerk organizasyonu yoksa (Kişisel Çalışma Alanı), mevcut bir tane ara
+  const { data: personalMember } = await supabase
     .from('org_members')
     .select('org_id')
     .eq('user_id', userId)
     .limit(1)
     .single();
 
-  if (memberRow?.org_id) return memberRow.org_id;
+  if (personalMember?.org_id) return personalMember.org_id;
 
-  // Yoksa otomatik organizasyon oluştur
+  // 3. Hiç yoksa yeni bir tane oluştur (UUID de olabilir ama userId bazlı bir string de olabilir)
+  // Dashboard'un orgId null iken kişisel olanları görmesi için burada org_id null bırakılabilir 
+  // veya özel bir 'personal_' prefixli ID atanabilir. 
+  // Şimdilik UUID ile devam edelim ama dashboard'u buna göre esneteceğiz.
   const { data: newOrg, error: orgError } = await supabase
     .from('organizations')
     .insert({ name: 'Kişisel Çalışma Alanı', owner_id: userId })
@@ -57,6 +96,7 @@ async function ensureOrgId(supabase: any, userId: string): Promise<string> {
     .single();
 
   if (orgError || !newOrg) throw new Error('Organizasyon oluşturulamadı.');
+
 
   const { error: memberError } = await supabase
     .from('org_members')
@@ -78,8 +118,10 @@ export default function CreateProjectModal({
   onCreated,
 }: CreateProjectModalProps) {
   const { user } = useUser();
+  const { organization } = useOrganization();
   const { getSupabase } = useSupabase();
   const userId = user?.id ?? null;
+  const clerkOrgId = organization?.id ?? null;
   const [selectedColor, setSelectedColor] = useState(COLOR_OPTIONS[0].hex);
   const [submitting, setSubmitting] = useState(false);
 
@@ -97,7 +139,7 @@ export default function CreateProjectModal({
       const supabase = await getSupabase();
       
       console.log('--- Proje Oluşturma Başı ---');
-      const orgId = await ensureOrgId(supabase, userId);
+      const orgId = await ensureOrgId(supabase, userId, clerkOrgId);
       console.log('Kullanılan OrgID:', orgId);
 
       const { data, error } = await supabase

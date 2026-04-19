@@ -13,8 +13,8 @@ RETURNS TEXT AS $$
 $$ LANGUAGE SQL STABLE;
 
 -- 1. VERİ TİPLERİ GÜNCELLEME (UUID -> TEXT)
--- Clerk ID'leri (user_...) string olduğu için kolon tiplerini tekst yapıyoruz.
-
+ALTER TABLE public.organizations ALTER COLUMN id TYPE TEXT;
+ALTER TABLE public.org_members ALTER COLUMN org_id TYPE TEXT;
 ALTER TABLE public.org_members ALTER COLUMN user_id TYPE TEXT;
 ALTER TABLE public.organizations ALTER COLUMN owner_id TYPE TEXT;
 ALTER TABLE public.projects ALTER COLUMN created_by TYPE TEXT;

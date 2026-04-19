@@ -53,27 +53,33 @@ export async function createTaskAction(params: CreateTaskParams) {
       return { success: false, error: `Veritabanı Hatası: ${error.message}` };
     }
 
-    // 2. Eğer birine atandıysa ve atanan kişi ben değilsem e-posta gönder
-    if (params.assigneeId && params.assigneeId !== "" && params.assigneeId !== userId) {
+    // 2. Eğer birine atandıysa e-posta gönder
+    if (params.assigneeId && params.assigneeId !== "") {
       try {
+        console.log(`[DEBUG] E-posta süreci başlıyor. Atanan: ${params.assigneeId}`);
         const client = await clerkClient();
         const assigneeUser = await client.users.getUser(params.assigneeId);
         
         if (assigneeUser) {
           const toEmail = assigneeUser.emailAddresses[0]?.emailAddress;
+          console.log(`[DEBUG] Alıcı e-postası bulundu: ${toEmail}`);
 
           if (toEmail) {
-            await sendTaskAssignmentEmail(
+            const emailResult = await sendTaskAssignmentEmail(
               toEmail,
               task.title,
               task.project?.name || 'Bilinmeyen Proje',
               user.firstName || user.emailAddresses[0].emailAddress
             );
+            console.log(`[DEBUG] E-posta gönderim sonucu:`, emailResult.success ? 'Başarılı' : 'Başarısız');
+          } else {
+            console.warn('[DEBUG] Alıcının e-posta adresi bulunamadı.');
           }
+        } else {
+          console.warn('[DEBUG] Atanan kullanıcı Clerk üzerinde bulunamadı.');
         }
       } catch (emailError: any) {
-        console.error('Bildirim gönderilirken hata oluştu:', emailError.message);
-        // E-posta hatası kritik değil, görev oluştu sonuçta.
+        console.error('[DEBUG] Bildirim gönderilirken hata oluştu:', emailError.message);
       }
     }
 

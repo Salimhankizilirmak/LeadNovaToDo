@@ -82,11 +82,12 @@ export default async function DashboardPage() {
   // Eğer bir organizasyondaysak, organizasyon verilerini filtrele. 
   // Değilsek (Kişisel), sadece atananları getir (RLS zaten koruyor).
   if (orgId) {
-    taskQuery.eq('org_id', orgId);
+    // Projeleri sadece bu organizasyona ait olanlarla kısıtla
     projectQuery.eq('org_id', orgId);
+    // Görevleri esnet: Bu organizasyona ait olanLAR VEYA bana atananLAR
+    taskQuery.or(`org_id.eq.${orgId},assignee_id.eq.${userId}`);
   } else {
-    // Kişisel alanda projesiz veya org_id'si boş/uuid olan projeleri de görebilmeli (RLS izniyle)
-    // Şimdilik sadece creator_id veya org_members üzerinden RLS ile gelenleri alacak.
+    // Kişisel alandayız, zaten varsayılan sorgu assignee_id = userId eklemişti
   }
 
   const [
