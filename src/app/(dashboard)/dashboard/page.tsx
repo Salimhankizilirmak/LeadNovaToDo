@@ -66,31 +66,43 @@ export default async function DashboardPage() {
 
   const supabase = await createClerkClient(token);
 
-  // Verileri çek (Organizasyon bazlı filtreleme)
+  // Verileri çek (Organizasyon varsa organizasyona, yoksa kullanıcıya göre filtrele)
+  const taskQuery = supabase
+    .from('tasks')
+    .select('*, project:project_id(name, color)')
+    .eq('assignee_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  const projectQuery = supabase
+    .from('projects')
+    .select('*')
+    .limit(3);
+
+  // Eğer bir organizasyondaysak, organizasyon verilerini filtrele. 
+  // Değilsek (Kişisel), sadece atananları getir (RLS zaten koruyor).
+  if (orgId) {
+    taskQuery.eq('org_id', orgId);
+    projectQuery.eq('org_id', orgId);
+  } else {
+    // Kişisel alanda projesiz veya org_id'si boş/uuid olan projeleri de görebilmeli (RLS izniyle)
+    // Şimdilik sadece creator_id veya org_members üzerinden RLS ile gelenleri alacak.
+  }
+
   const [
     { data: tasks },
     { data: projects },
-  ] = await Promise.all([
-    supabase
-      .from('tasks')
-      .select('*, project:project_id(name, color)')
-      .eq('org_id', orgId)
-      .eq('assignee_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(5),
-    supabase
-      .from('projects')
-      .select('*')
-      .eq('org_id', orgId)
-      .limit(3),
-  ]);
+  ] = await Promise.all([taskQuery, projectQuery]);
 
-  // İstatistikleri hesapla (Kullanıcıya atanan görevler)
-  const { data: allTasks } = await supabase
+  // İstatistikleri hesapla
+  const statsQuery = supabase
     .from('tasks')
     .select('status, priority')
-    .eq('org_id', orgId)
     .eq('assignee_id', userId);
+
+  if (orgId) statsQuery.eq('org_id', orgId);
+
+  const { data: allTasks } = await statsQuery;
 
   const stats: DashboardStats = {
     total: allTasks?.length || 0,
