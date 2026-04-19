@@ -14,18 +14,9 @@ const isAdminRoute = createRouteMatcher([
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
-  const { userId, sessionClaims } = await auth();
-  const userEmail = (sessionClaims?.email as string) || "";
-  
-  // Süper Admin Listesini Al
-  const superAdmins = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAILS?.split(',') || [];
-  const isSuperAdmin = superAdmins.includes(userEmail);
-
-  // 1. Admin Rotası Kontrolü
+  // 1. Admin Rotası Kontrolü (Sadece giriş yapmış olmayı zorunlu tutar)
   if (isAdminRoute(req)) {
-    if (!userId || !isSuperAdmin) {
-      return Response.redirect(new URL('/', req.url));
-    }
+    await auth.protect();
   }
 
   // 2. Genel Korumalı Rotalar

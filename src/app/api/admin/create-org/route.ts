@@ -1,10 +1,15 @@
-import { auth, clerkClient } from '@clerk/nextjs/server';
+import { auth, clerkClient, currentUser } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
   try {
-    const { userId, sessionClaims } = await auth();
-    const userEmail = (sessionClaims?.email as string) || "";
+    const { userId } = await auth();
+    const user = await currentUser();
+    
+    // Kullanıcının e-postasını güvenli bir şekilde al
+    const userEmail = user?.emailAddresses?.find(
+      (e) => e.id === user.primaryEmailAddressId
+    )?.emailAddress || user?.emailAddresses[0]?.emailAddress || "";
 
     // 1. Süper Admin yetki kontrolü
     const superAdmins = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAILS?.split(',') || [];
