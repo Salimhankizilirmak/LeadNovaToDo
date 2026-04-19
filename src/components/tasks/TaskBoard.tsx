@@ -29,7 +29,7 @@ function KanbanCard({ task, onOpen, onMove }: TaskCardProps) {
 
   const assignee = task.assignee;
   const initials = assignee 
-    ? (assignee.display_name || assignee.email).split('@')[0].substring(0, 2).toUpperCase()
+    ? (assignee.display_name || assignee.email || 'U').split('@')[0].substring(0, 2).toUpperCase()
     : null;
 
   return (
