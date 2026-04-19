@@ -101,6 +101,8 @@ export async function updateTaskStatusAction(taskId: string, newStatus: string) 
     if (!userId) return { success: false, error: 'Oturum açılmamış.' };
 
     const token = await getToken({ template: 'supabase' });
+    if (!token) return { success: false, error: 'Token alınamadı.' };
+    
     const supabase = await createClerkClient(token);
 
     const { data, error } = await supabase
