@@ -34,7 +34,6 @@ interface Task {
   due_date: string | null;
   project_id: string;
   assignee_id: string | null;
-  assignee?: Member | null;
 }
 
 /* ── Props ──────────────────────────────────────────────────── */
@@ -88,10 +87,11 @@ export default function CreateTaskModal({
         .from('tasks')
         .insert({
           title: values.title,
+          description: null, // Boş geçilemez durumları için güvenli null
           priority: values.priority,
           project_id: projectId,
           assignee_id: values.assignee_id || null,
-          user_id: userId, // Clerk ID'si direkt kaydediliyor
+          user_id: userId,
           status: 'todo',
         })
         .select('*')

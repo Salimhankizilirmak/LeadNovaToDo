@@ -8,6 +8,7 @@ ALTER TABLE public.org_members ALTER COLUMN user_id TYPE TEXT;
 ALTER TABLE public.organizations ALTER COLUMN owner_id TYPE TEXT;
 ALTER TABLE public.projects ALTER COLUMN created_by TYPE TEXT;
 ALTER TABLE public.tasks ALTER COLUMN user_id TYPE TEXT;
+ALTER TABLE public.tasks ALTER COLUMN assignee_id TYPE TEXT;
 
 -- 2. RLS POLİTİKALARINI TEMİZLEME VE YENİDEN KURMA
 -- auth.uid() artık Clerk'ten gelen String 'sub' değerini döndürür.
