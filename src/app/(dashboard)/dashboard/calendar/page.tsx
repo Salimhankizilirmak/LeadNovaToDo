@@ -39,7 +39,7 @@ export default function CalendarPage() {
         const supabase = await getSupabase();
         const { data, error } = await supabase
           .from('tasks')
-          .select('*, project:projects(name, color)')
+          .select('*, project:projects!tasks_project_id_fkey(name, color)')
           .eq('assignee_id', user.id);
 
         if (error) throw error;

@@ -47,7 +47,7 @@ export async function createTaskAction(params: CreateTaskParams) {
         created_by: userId,
         status: 'todo',
       })
-      .select('*, project:projects(name, color)')
+      .select('*, project:projects!tasks_project_id_fkey(name, color)')
       .single();
 
     if (error) {
