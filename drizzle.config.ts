@@ -1,4 +1,7 @@
 import { defineConfig } from 'drizzle-kit';
+import { config } from 'dotenv';
+
+config({ path: '.env.local' });
 
 /**
  * Drizzle Kit Yapılandırması
