@@ -36,8 +36,6 @@ export default function RootLayout({
   return (
     <ClerkProvider
       afterSignOutUrl="/"
-      afterSignInUrl="/dashboard"
-      afterSignUpUrl="/dashboard"
     >
       <html
         lang="tr"
