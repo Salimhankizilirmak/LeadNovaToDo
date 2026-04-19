@@ -73,7 +73,7 @@ export default function CreateTaskModal({
         assigneeId: values.assignee_id,
       });
 
-      if (!result.success) throw new Error('Görev oluşturulamadı');
+      if (!result.success) throw new Error(result.error || 'Görev oluşturulamadı');
 
       toast.success('Görev başarıyla eklendi ve bildirim gönderildi ✓');
       onCreated(result.task as any);
