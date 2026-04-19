@@ -34,6 +34,7 @@ const COLOR_OPTIONS = [
 const schema = z.object({
   name: z.string().min(3, 'Proje adı en az 3 karakter olmalıdır').max(80),
   description: z.string().max(300).optional(),
+  manager_id: z.string().optional().nullable(),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -85,10 +86,7 @@ async function ensureOrgId(supabase: any, userId: string, clerkOrgId?: string | 
 
   if (personalMember?.org_id) return personalMember.org_id;
 
-  // 3. Hiç yoksa yeni bir tane oluştur (UUID de olabilir ama userId bazlı bir string de olabilir)
-  // Dashboard'un orgId null iken kişisel olanları görmesi için burada org_id null bırakılabilir 
-  // veya özel bir 'personal_' prefixli ID atanabilir. 
-  // Şimdilik UUID ile devam edelim ama dashboard'u buna göre esneteceğiz.
+  // 3. Hiç yoksa yeni bir tane oluştur
   const { data: newOrg, error: orgError } = await supabase
     .from('organizations')
     .insert({ name: 'Kişisel Çalışma Alanı', owner_id: userId })
@@ -124,12 +122,41 @@ export default function CreateProjectModal({
   const clerkOrgId = organization?.id ?? null;
   const [selectedColor, setSelectedColor] = useState(COLOR_OPTIONS[0].hex);
   const [submitting, setSubmitting] = useState(false);
+  const [members, setMembers] = useState<any[]>([]);
 
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
-  } = useForm<FormValues>({ resolver: zodResolver(schema) });
+  } = useForm<FormValues>({ 
+    resolver: zodResolver(schema),
+    defaultValues: {
+      manager_id: null
+    }
+  });
+
+  // Üyeleri yükle
+  useState(() => {
+    async function loadMembers() {
+      const supabase = await getSupabase();
+      // Önce bu kullanıcının organizasyonunu bul
+      let targetOrgId = clerkOrgId;
+      if (!targetOrgId) {
+        const { data: prof } = await supabase.from('profiles').select('org_id').eq('id', userId).single();
+        targetOrgId = prof?.org_id;
+      }
+      
+      if (targetOrgId) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .eq('org_id', targetOrgId);
+        if (data) setMembers(data);
+      }
+    }
+    if (userId) loadMembers();
+  });
 
   const onSubmit = async (values: FormValues) => {
     if (!userId) return;
@@ -150,9 +177,10 @@ export default function CreateProjectModal({
           color: selectedColor,
           org_id: orgId,
           created_by: userId,
+          manager_id: values.manager_id || null, // Sorumlu ID
           status: 'active',
         })
-        .select('id, name, description, color, status, org_id, created_by, created_at')
+        .select('*')
         .single();
 
       if (error) {
@@ -214,6 +242,24 @@ export default function CreateProjectModal({
             )}
           </div>
 
+          {/* Sorumlu Personel */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+              Projeden Sorumlu Personel
+            </label>
+            <select
+              {...register('manager_id')}
+              className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 bg-gray-50 text-gray-900 outline-none focus:border-indigo-400 focus:bg-white transition-colors cursor-pointer"
+            >
+              <option value="">Sorumlu seçilmedi</option>
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.full_name} ({m.email?.split('@')[0]})
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Açıklama */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1.5">
@@ -226,11 +272,6 @@ export default function CreateProjectModal({
               placeholder="Bu proje hakkında kısa bir açıklama..."
               className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 bg-gray-50 text-gray-900 placeholder-gray-400 outline-none focus:border-indigo-400 focus:bg-white transition-colors resize-none"
             />
-            {errors.description && (
-              <p className="text-xs text-red-500 mt-1">
-                {errors.description.message}
-              </p>
-            )}
           </div>
 
           {/* Renk Seçici */}

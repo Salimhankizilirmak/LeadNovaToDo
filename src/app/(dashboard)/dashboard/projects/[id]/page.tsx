@@ -24,11 +24,13 @@ interface Project {
   name: string;
   color: string;
   org_id: string;
+  manager_id?: string | null;
 }
 
 export default function ProjectDetailPage() {
   const { id } = useParams();
   const router = useRouter();
+  const { user } = useUser();
   const { getSupabase } = useSupabase();
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -41,6 +43,12 @@ export default function ProjectDetailPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isSlideOverOpen, setIsSlideOverOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  /* ── Yetki Kontrolleri ─────────────────────────────────────── */
+  const myRole = user?.publicMetadata?.role as string;
+  const isManager = myRole === 'Patron' || myRole === 'Genel Müdür' || myRole === 'Admin';
+  const isProjectManager = project?.manager_id === user?.id;
+  const canManageTasks = isManager || isProjectManager;
 
   /* ── Data Fetching ────────────────────────────────────────── */
   useEffect(() => {
@@ -204,13 +212,16 @@ export default function ProjectDetailPage() {
               <List size={18} />
             </button>
           </div>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 transition-all active:scale-95"
-          >
-            <Plus size={18} />
-            <span>Yeni Görev</span>
-          </button>
+          
+          {canManageTasks && (
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 transition-all active:scale-95"
+            >
+              <Plus size={18} />
+              <span>Yeni Görev</span>
+            </button>
+          )}
         </div>
       </div>
 
