@@ -132,17 +132,17 @@ export async function updateUserRoleAction(targetUserId: string, newRole: UserRo
 
     const clerk = await getClerkClient();
     const user = await currentUser();
+    const { getToken } = await auth();
     
-    // 1. Mevcut rolü tespit et
+    // 1. Mevcut rolü tespit et (Token bazlı ve yetkili sorgu)
+    const token = await getToken({ template: 'supabase' });
+    const supabaseAuthorised = await createClerkClient(token || '');
+    
     let myRole = user?.publicMetadata?.role as UserRole;
     
-    // Eğer Clerk'te yoksa Veritabanından yedek kontrol yap (KRİTİK)
     if (!myRole) {
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
-      const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
-      
-      const { data: profile } = await supabaseAdmin
+      console.log('[Auth] Clerk metadata boş, Supabase uzerinden yetki doğrulanıyor...');
+      const { data: profile } = await supabaseAuthorised
         .from('profiles')
         .select('role')
         .eq('id', userId)
@@ -150,7 +150,7 @@ export async function updateUserRoleAction(targetUserId: string, newRole: UserRo
         
       if (profile?.role) {
         myRole = profile.role as UserRole;
-        console.log('[Auth] Yetki veritabanından doğrulandı:', myRole);
+        console.log('[Auth] Yetki veritabanından başarıyla doğrulandı:', myRole);
       }
     }
     
