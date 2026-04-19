@@ -39,6 +39,8 @@ interface Task {
   priority: 'low' | 'medium' | 'high' | 'critical';
   due_date: string | null;
   assignee_id: string | null;
+  created_by: string;
+  org_id: string;
 }
 
 export default function ProjectDetailPage() {

@@ -15,7 +15,8 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { toast } from 'sonner';
-import { createClient } from '@/utils/supabase/client';
+import { createClerkClient } from '@/utils/supabase/client';
+import { useAuth } from '@clerk/nextjs';
 
 /* ── Tipler ─────────────────────────────────────────────────── */
 interface Message {
@@ -38,6 +39,7 @@ const QUICK_ACTIONS = [
 export default function AIAssistantWidget() {
   const params = useParams();
   const projectId = params?.id as string | undefined;
+  const { getToken } = useAuth();
 
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
@@ -60,7 +62,9 @@ export default function AIAssistantWidget() {
   useEffect(() => {
     if (projectId && isOpen) {
       const fetchContext = async () => {
-        const supabase = createClient();
+        const token = await getToken({ template: 'supabase' });
+        if (!token) return;
+        const supabase = createClerkClient(token);
         const { data: tasks } = await supabase
           .from('tasks')
           .select('title, status')
