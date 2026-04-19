@@ -124,10 +124,10 @@ export default function TaskList({ tasks, onOpenTask, onToggleDone }: TaskListPr
 
                   {/* Due Date */}
                   <td className="px-6 py-4 hidden md:table-cell">
-                    {task.due_date ? (
+                    {task.dueDate ? (
                       <div className="flex items-center gap-1.5 text-gray-500 text-xs font-medium">
                         <Calendar size={13} className="text-gray-400" />
-                        {new Date(task.due_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}
+                        {new Date(task.dueDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}
                       </div>
                     ) : (
                       <span className="text-gray-300 text-[10px]">-</span>

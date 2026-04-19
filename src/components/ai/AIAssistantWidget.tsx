@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useParams } from 'next/navigation';
 import { 
   Sparkles, 
   X, 
@@ -15,7 +14,7 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { toast } from 'sonner';
-import { useSupabase } from '@/hooks/use-supabase';
+import { getAIContextAction } from '@/app/actions/ai';
 
 /* ── Tipler ─────────────────────────────────────────────────── */
 interface Message {
@@ -36,8 +35,6 @@ const QUICK_ACTIONS = [
 ];
 
 export default function AIAssistantWidget({ projectId }: { projectId?: string }) {
-  const { getSupabase } = useSupabase();
-
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([
@@ -59,30 +56,14 @@ export default function AIAssistantWidget({ projectId }: { projectId?: string })
   useEffect(() => {
     if (isOpen && projectId) {
       const fetchContext = async () => {
-        try {
-          const supabase = await getSupabase();
-          
-          const { data: tasks } = await supabase
-            .from('tasks')
-            .select('title, status')
-            .eq('project_id', projectId);
-          
-          const { data: project } = await supabase
-            .from('projects')
-            .select('name')
-            .eq('id', projectId)
-            .single();
-
-          if (project && tasks) {
-            setProjectData({ name: project.name, tasks });
-          }
-        } catch (error) {
-          console.error("AI Context load error:", error);
+        const result = await getAIContextAction(projectId);
+        if (result.success && result.context) {
+          setProjectData(result.context as ProjectContext);
         }
       };
       fetchContext();
     }
-  }, [projectId, isOpen, getSupabase]);
+  }, [projectId, isOpen]);
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || loading) return;
@@ -98,7 +79,7 @@ export default function AIAssistantWidget({ projectId }: { projectId?: string })
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: newMessages,
-          contextData: projectData // Mevcut proje bağlamını gönder
+          contextData: projectData
         }),
       });
 
@@ -123,7 +104,6 @@ export default function AIAssistantWidget({ projectId }: { projectId?: string })
         }`}
       >
         <Sparkles size={24} className="group-hover:animate-pulse" />
-        <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white animate-bounce" />
       </button>
 
       {/* Slide-over Chat Panel */}
@@ -138,20 +118,19 @@ export default function AIAssistantWidget({ projectId }: { projectId?: string })
           {/* Header */}
           <div className="p-5 sm:p-6 bg-indigo-600 text-white flex items-center justify-between flex-shrink-0">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30 flex-shrink-0">
+              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30">
                 <Sparkles size={20} />
               </div>
-              <div className="min-w-0">
-                <h2 className="text-sm sm:text-base font-black tracking-tight leading-tight truncate">LeadNova AI</h2>
+              <div>
+                <h2 className="text-sm sm:text-base font-black tracking-tight leading-tight">LeadNova AI</h2>
                 <p className="text-[10px] font-bold text-indigo-100 uppercase tracking-widest mt-0.5 flex items-center gap-1">
-                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                    Aktif
                 </p>
               </div>
             </div>
             <button 
               onClick={() => setIsOpen(false)}
-              className="p-2 sm:p-2.5 hover:bg-white/10 rounded-xl transition-colors outline-none flex-shrink-0 border border-white/20"
+              className="p-2 sm:p-2.5 hover:bg-white/10 rounded-xl transition-colors outline-none border border-white/20"
             >
               <X size={22} />
             </button>
@@ -165,7 +144,7 @@ export default function AIAssistantWidget({ projectId }: { projectId?: string })
             {messages.map((m, idx) => (
               <div 
                 key={idx} 
-                className={`flex gap-3 ${m.role === 'user' ? 'flex-row-reverse' : ''} animate-in fade-in slide-in-from-bottom-2 duration-300`}
+                className={`flex gap-3 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}
               >
                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border ${
                   m.role === 'user' 
@@ -179,7 +158,7 @@ export default function AIAssistantWidget({ projectId }: { projectId?: string })
                     ? 'bg-indigo-600 text-white rounded-tr-none' 
                     : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'
                 }`}>
-                  <div className="prose prose-sm prose-p:leading-relaxed prose-li:my-1 prose-strong:font-black">
+                  <div className="prose prose-sm prose-p:leading-relaxed">
                     <ReactMarkdown>
                       {m.content}
                     </ReactMarkdown>
@@ -192,10 +171,8 @@ export default function AIAssistantWidget({ projectId }: { projectId?: string })
                 <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center">
                   <Bot size={16} className="text-white" />
                 </div>
-                <div className="bg-white border border-gray-100 rounded-2xl px-4 py-3 flex items-center gap-1">
-                  <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-bounce" />
-                  <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-bounce delay-100" />
-                  <div className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-bounce delay-200" />
+                <div className="bg-white border border-gray-100 rounded-2xl px-4 py-3">
+                  <Loader2 size={16} className="animate-spin text-gray-400" />
                 </div>
               </div>
             )}
@@ -203,14 +180,13 @@ export default function AIAssistantWidget({ projectId }: { projectId?: string })
 
           {/* Input Area */}
           <div className="p-5 sm:p-6 bg-white border-t border-gray-100 space-y-4 flex-shrink-0">
-            {/* Quick Actions */}
-            <div className="flex overflow-x-auto gap-2 pb-1 no-scrollbar -mx-1 px-1">
+            <div className="flex overflow-x-auto gap-2 no-scrollbar">
               {QUICK_ACTIONS.map((action) => (
                 <button
                   key={action.id}
                   onClick={() => handleSendMessage(action.prompt)}
                   disabled={loading}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-full border border-gray-100 bg-gray-50 text-[11px] font-bold text-gray-500 hover:border-indigo-200 hover:text-indigo-600 transition-all whitespace-nowrap active:scale-95 disabled:opacity-50 shadow-sm"
+                  className="flex items-center gap-2 px-4 py-2 rounded-full border border-gray-100 bg-gray-50 text-[10px] font-bold text-gray-500 hover:border-indigo-200 transition-all whitespace-nowrap"
                 >
                   {action.icon}
                   {action.label}
@@ -228,14 +204,14 @@ export default function AIAssistantWidget({ projectId }: { projectId?: string })
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Bir şeyler sor..."
                 disabled={loading}
-                className="w-full pl-4 pr-14 py-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all placeholder:text-gray-300 shadow-inner"
+                className="w-full pl-4 pr-14 py-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all shadow-inner"
               />
               <button 
                 type="submit"
                 disabled={!input.trim() || loading}
-                className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:bg-gray-200 transition-all active:scale-90 shadow-lg shadow-indigo-500/20"
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-500/20"
               >
-                {loading ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+                <Send size={18} />
               </button>
             </form>
           </div>

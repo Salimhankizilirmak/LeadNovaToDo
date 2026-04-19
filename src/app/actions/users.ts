@@ -1,32 +1,23 @@
 'use server';
 
 import { auth, currentUser, clerkClient as getClerkClient } from '@clerk/nextjs/server';
-import { createClient } from '@supabase/supabase-js';
+import { db } from '@/db';
+import { profiles, organizations } from '@/db/schema';
+import { eq, and } from 'drizzle-orm';
+
 import { UserRole } from '@/types/task';
 
 /**
- * Kullanıcının Clerk bilgilerini Supabase 'profiles' tablosuna senkronize eder.
- * Token bazlı yetkilendirme ve organizasyon otomatik eşleme içerir.
+ * Kullanıcının Clerk bilgilerini Turso 'profiles' tablosuna senkronize eder.
  */
-import { createClerkClient } from '@/utils/supabase/server';
-
 export async function syncProfile() {
   try {
-    const { userId, orgId, getToken } = await auth();
+    const { userId, orgId } = await auth();
     const user = await currentUser();
 
     if (!userId || !user) return { success: false, error: 'Oturum bulunamadı' };
 
-    // 1. Clerk-Supabase Token Al (RLS için kritik)
-    const token = await getToken({ template: 'supabase' });
-    if (!token) {
-      console.warn('[Sync] Supabase token alınamadı, anonim erişim denenecek (Service role eksikse fail edebilir)');
-    }
-
-    // 2. Yetkili Supabase İstemcisi Oluştur
-    const supabase = await createClerkClient(token || '');
-
-    // 3. Organizasyon Bilgisini Garantile
+    // 1. Organizasyon Bilgisini Garantile
     let targetOrgId = orgId;
     
     if (!targetOrgId) {
@@ -40,56 +31,51 @@ export async function syncProfile() {
       }
     }
 
-    // 4. Mevcut Profili Sorgula (Rol Koruması İçin)
-    const { data: existingProfile } = await supabase
-      .from('profiles')
-      .select('role, org_id')
-      .eq('id', userId)
-      .maybeSingle();
+    // 2. Mevcut Profili Sorgula (Rol Koruması İçin)
+    const existingProfile = await db.query.profiles.findFirst({
+      where: eq(profiles.id, userId),
+    });
 
-    // 5. Rol Belirleme Mantığı (Hiyerarşi: Clerk Metadata > Mevcut DB > Varsayılan)
+    // 3. Rol Belirleme Mantığı
     let finalRole: UserRole = (user.publicMetadata?.role as UserRole);
     
     if (!finalRole) {
       if (existingProfile?.role) {
         finalRole = existingProfile.role as UserRole;
-        console.log('[Sync] Mevcut DB rolü korunuyor:', finalRole);
       } else {
         finalRole = 'Personel';
-        console.log('[Sync] Yeni kullanıcı için varsayılan rol atanıyor: Personel');
       }
-    } else {
-      console.log('[Sync] Clerk Metadata rolü uygulanıyor:', finalRole);
     }
 
-    // 6. Organizasyon ID Belirleme (Hiyerarşi: Oturum > Mevcut DB > Clerk API)
-    let finalOrgId = targetOrgId || existingProfile?.org_id;
-
+    // 4. Organizasyon ID Belirleme
+    const finalOrgId = targetOrgId || existingProfile?.orgId || null;
     const full_name = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.emailAddresses[0]?.emailAddress || 'Kullanıcı';
 
-    console.log('[Sync] Veritabanı işlemi başlatılıyor...', { userId, finalOrgId, finalRole });
+    console.log('[Sync] Drizzle Upsert işlemi başlatılıyor...', { userId, finalOrgId, finalRole });
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .upsert({
-        id: userId,
-        full_name,
+    // 5. Drizzle Upsert
+    const [updatedProfile] = await db.insert(profiles).values({
+      id: userId,
+      fullName: full_name,
+      email: user.emailAddresses[0]?.emailAddress || '',
+      avatarUrl: user.imageUrl,
+      role: finalRole,
+      orgId: finalOrgId,
+      updatedAt: new Date().toISOString()
+    }).onConflictDoUpdate({
+      target: profiles.id,
+      set: {
+        fullName: full_name,
         email: user.emailAddresses[0]?.emailAddress || '',
-        avatar_url: user.imageUrl,
+        avatarUrl: user.imageUrl,
         role: finalRole,
-        org_id: finalOrgId || null,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'id' })
-      .select()
-      .single();
+        orgId: finalOrgId,
+        updatedAt: new Date().toISOString()
+      }
+    }).returning();
 
-    if (error) {
-      console.error('[Sync] Supabase Upsert Hatası:', error);
-      throw error;
-    }
-
-    console.log('[Sync] Başarılı! Profil güncellendi. Rol:', data.role, 'Org:', data.org_id);
-    return { success: true, profile: data };
+    console.log('[Sync] Başarılı! Profil güncellendi. Rol:', updatedProfile.role, 'Org:', updatedProfile.orgId);
+    return { success: true, profile: updatedProfile };
   } catch (err: any) {
     console.error('PROFIL SENKRONIZASYON HATASI:', err);
     return { success: false, error: err.message };
@@ -97,7 +83,7 @@ export async function syncProfile() {
 }
 
 /**
- * Üye davet etme (Backend API ile özel rol atar)
+ * Üye davet etme
  */
 export async function inviteMemberWithRoleAction(emailAddress: string, role: UserRole) {
   try {
@@ -106,7 +92,6 @@ export async function inviteMemberWithRoleAction(emailAddress: string, role: Use
 
     const clerk = await getClerkClient();
     
-    // Clerk Invitations API ile davet gönder ve metadata'ya rolü işle
     await clerk.organizations.createOrganizationInvitation({
       organizationId: orgId,
       inviterUserId: userId,
@@ -132,42 +117,27 @@ export async function updateUserRoleAction(targetUserId: string, newRole: UserRo
 
     const clerk = await getClerkClient();
     const user = await currentUser();
-    const { getToken } = await auth();
-    
-    // 1. Mevcut rolü tespit et (Token bazlı ve yetkili sorgu)
-    const token = await getToken({ template: 'supabase' });
-    const supabaseAuthorised = await createClerkClient(token || '');
     
     let myRole = user?.publicMetadata?.role as UserRole;
     
     if (!myRole) {
-      console.log('[Auth] Clerk metadata boş, Supabase uzerinden yetki doğrulanıyor...');
-      const { data: profile } = await supabaseAuthorised
-        .from('profiles')
-        .select('role')
-        .eq('id', userId)
-        .single();
-        
+      const profile = await db.query.profiles.findFirst({
+        where: eq(profiles.id, userId),
+      });
       if (profile?.role) {
         myRole = profile.role as UserRole;
-        console.log('[Auth] Yetki veritabanından başarıyla doğrulandı:', myRole);
       }
     }
     
-    // Hedef kullanıcının mevcut rollerini al
     const targetUser = await clerk.users.getUser(targetUserId);
     const targetRole = targetUser.publicMetadata?.role as UserRole;
 
-    console.log('[Auth] Yetki Kontrolü:', { myRole, targetRole, action: 'Update Role' });
-
-    // Hiyerarşik Yetki Kontrolü
+    // Yetki Kontrolü
     if (myRole === 'Patron') {
-      // Patron her şeyi yapabilir (kendini değiştirmek hariç veya diğer patronlar hariç)
       if (targetRole === 'Patron' && userId !== targetUserId) {
         return { success: false, error: 'Diğer patronların yetkilerini değiştiremezsiniz.' };
       }
     } else if (myRole === 'Genel Müdür') {
-      // Genel Müdür sadece Patron ve diğer Genel Müdürler dışındakileri değiştirebilir
       if (targetRole === 'Patron' || targetRole === 'Genel Müdür') {
         return { success: false, error: 'Üst düzey yöneticilerin yetkilerini değiştirme izniniz yok.' };
       }
@@ -175,28 +145,19 @@ export async function updateUserRoleAction(targetUserId: string, newRole: UserRo
       return { success: false, error: 'Bu işlem için yetkiniz yok.' };
     }
 
-    // 1. Clerk publicMetadata Güncelleme
+    // 1. Clerk Metadata Güncelleme
     await clerk.users.updateUserMetadata(targetUserId, {
       publicMetadata: { role: newRole }
     });
 
-    // 2. Supabase Profiles Güncelleme (Yetkili istemci ile!)
-    console.log('[Auth] Supabase profil güncellemesi başlatılıyor...', { targetUserId, newRole });
-    
-    const { error: sbError } = await supabaseAuthorised
-      .from('profiles')
-      .update({ 
+    // 2. Drizzle Profiles Güncelleme
+    await db.update(profiles)
+      .set({ 
         role: newRole,
-        updated_at: new Date().toISOString()
+        updatedAt: new Date().toISOString()
       })
-      .eq('id', targetUserId);
+      .where(eq(profiles.id, targetUserId));
 
-    if (sbError) {
-      console.error('[Auth] Supabase Güncelleme Hatası:', sbError);
-      throw sbError;
-    }
-
-    console.log('[Auth] Başarılı! Rol güncellendi.');
     return { success: true };
   } catch (err: any) {
     console.error('UPDATE ROLE ACTION ERROR:', err);
@@ -209,16 +170,16 @@ export async function updateUserRoleAction(targetUserId: string, newRole: UserRo
  */
 export async function getOrgProfiles(orgId: string) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    // Burada da auth kontrolü yapmalıyız
+    const { orgId: currentOrgId } = await auth();
+    if (currentOrgId !== orgId) {
+      return { success: false, error: 'Yetkisiz organizasyon erişimi.' };
+    }
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('org_id', orgId);
+    const data = await db.query.profiles.findMany({
+      where: eq(profiles.orgId, orgId),
+    });
 
-    if (error) throw error;
     return { success: true, profiles: data };
   } catch (err: any) {
     console.error('PROFILLER GETIRILEMEDI:', err);

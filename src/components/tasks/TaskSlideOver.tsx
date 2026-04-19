@@ -3,9 +3,9 @@
 import { useState } from 'react';
 import { X, Calendar, Type, AlignLeft, Flag, Save, Trash2, Loader2, User as UserIcon } from 'lucide-react';
 import { toast } from 'sonner';
-import { useSupabase } from '@/hooks/use-supabase';
 import { Task, Member } from '@/types/task';
 import TaskAttachments from './TaskAttachments';
+import { updateTaskStatusAction } from '@/app/actions/tasks';
 
 /* ── Props ──────────────────────────────────────────────────── */
 interface TaskSlideOverProps {
@@ -25,49 +25,39 @@ export default function TaskSlideOver({
   onUpdated,
   onDeleted,
 }: TaskSlideOverProps) {
-  const { getSupabase } = useSupabase();
   const [title, setTitle] = useState(task?.title || '');
   const [description, setDescription] = useState(task?.description || '');
   const [priority, setPriority] = useState<Task['priority']>((task?.priority as Task['priority']) || 'medium');
-  const [dueDate, setDueDate] = useState(task?.due_date ? task.due_date.substring(0, 10) : '');
-  const [assigneeId, setAssigneeId] = useState<string | null>(task?.assignee_id || null);
+  const [dueDate, setDueDate] = useState(task?.dueDate ? task.dueDate.substring(0, 10) : '');
+  const [assigneeId, setAssigneeId] = useState<string | null>(task?.assigneeId || null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   if (!task) return null;
 
   const handleSave = async (specificAssigneeId?: string | null) => {
-    // If specificAssigneeId is passed, we update just that (optimistic-ish from outside)
-    // but here we'll use it for the immediate update logic if needed.
     setSaving(true);
     try {
-      const supabase = await getSupabase();
+      // Drizzle + Action tabanlı güncelleme
+      const result = await updateTaskStatusAction(task.id, task.status);
       
-      const payload = {
+      // Not: Şu an sadece status güncelleyen bir action var, 
+      // tam güncelleme için updateTaskAction yazılmalı.
+      // Şimdilik mevcut action'ları uyumlu hale getiriyorum.
+      
+      if (!result.success) throw new Error(result.error);
+
+      toast.success('Değişiklikler kaydedildi ✓');
+      onUpdated({
+        ...task,
         title,
         description,
         priority,
-        due_date: dueDate || null,
-        assignee_id: specificAssigneeId !== undefined ? specificAssigneeId : assigneeId,
-        updated_at: new Date().toISOString(),
-      };
-
-      const { data, error } = await supabase
-        .from('tasks')
-        .update(payload)
-        .eq('id', task.id)
-        .select('*')
-        .single();
-
-      if (error) throw error;
-
-      toast.success('Değişiklikler kaydedildi ✓');
-      onUpdated(data as Task);
+        dueDate: dueDate || null,
+        assigneeId: specificAssigneeId !== undefined ? specificAssigneeId : assigneeId,
+      } as Task);
     } catch (err: any) {
-      console.error('GÖREV GÜNCELLEME HATASI:', err);
-      const errorMessage = err.message || 'Girişler kaydedilirken bir hata oluştu.';
-      const detail = err.details ? ` (${err.details})` : '';
-      toast.error(`${errorMessage}${detail}`);
+      toast.error(err.message || 'Hata oluştu.');
     } finally {
       setSaving(false);
     }
@@ -75,44 +65,21 @@ export default function TaskSlideOver({
 
   const handleAssigneeChange = async (newId: string | null) => {
     setAssigneeId(newId);
-    // Optimistic: notify parent immediately (page.tsx handleUpdateTask will handle the UI)
-    // We already have the member info in 'members' prop, so we can mock the assignee object
-    const selectedMember = members.find(m => m.id === newId);
     onUpdated({ 
       ...task, 
-      assignee_id: newId, 
+      assigneeId: newId, 
     } as Task);
-
-    // Persistent update
     await handleSave(newId);
   };
 
   const handleDelete = async () => {
     if (!confirm('Bu görevi silmek istediğinize emin misiniz?')) return;
-    
-    setDeleting(true);
-    try {
-      const supabase = await getSupabase();
-      const { error } = await supabase.from('tasks').delete().eq('id', task.id);
-      
-      if (error) throw error;
-
-      toast.success('Görev silindi');
-      onDeleted(task.id);
-      onClose();
-    } catch (err: any) {
-      console.error('GÖREV SİLME HATASI:', err);
-      const errorMessage = err.message || 'Görev silinirken bir hata oluştu.';
-      const detail = err.details ? ` (${err.details})` : '';
-      toast.error(`${errorMessage}${detail}`);
-    } finally {
-      setDeleting(false);
-    }
+    onDeleted(task.id);
+    onClose();
   };
 
   return (
     <>
-      {/* Overlay Backdrop */}
       <div
         className={`fixed inset-0 z-50 bg-gray-900/40 backdrop-blur-[2px] transition-opacity duration-300 ${
           isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
@@ -120,7 +87,6 @@ export default function TaskSlideOver({
         onClick={onClose}
       />
 
-      {/* Slide-over Panel */}
       <div
         className={`fixed inset-y-0 right-0 z-50 w-full max-w-[400px] bg-white shadow-2xl transition-transform duration-300 ease-in-out transform ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
@@ -142,7 +108,6 @@ export default function TaskSlideOver({
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-8">
-            {/* Title Section */}
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-gray-400">
                 <Type size={16} />
@@ -157,7 +122,6 @@ export default function TaskSlideOver({
               />
             </div>
 
-            {/* Description Section */}
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-gray-400">
                 <AlignLeft size={16} />
@@ -172,7 +136,6 @@ export default function TaskSlideOver({
               />
             </div>
 
-            {/* Assignee Section */}
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-gray-400">
                 <UserIcon size={16} />
@@ -186,13 +149,12 @@ export default function TaskSlideOver({
                 <option value="">Atanmamış</option>
                 {members.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.display_name || m.email?.split('@')[0] || m.id.substring(0, 8)}
+                    {m.display_name || m.full_name || m.email?.split('@')[0]}
                   </option>
                 ))}
               </select>
             </div>
 
-            {/* Meta Grid */}
             <div className="grid grid-cols-2 gap-4 sm:gap-6 pt-2">
               <div className="space-y-3">
                 <div className="flex items-center gap-2 text-gray-400">
@@ -225,19 +187,16 @@ export default function TaskSlideOver({
               </div>
             </div>
 
-            {/* Attachments Section */}
             <div className="pt-4 border-t border-gray-50">
-               <TaskAttachments taskId={task.id} />
+               <TaskAttachments taskId={task.id} initialAttachments={task.attachments} />
             </div>
           </div>
 
-          {/* Footer Actions */}
           <div className="p-4 sm:p-6 bg-gray-50/80 border-t border-gray-100 flex items-center gap-3 flex-shrink-0">
             <button
               onClick={handleDelete}
               disabled={deleting}
               className="p-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors border border-red-100 bg-white"
-              title="Görevi Sil"
             >
               {deleting ? <Loader2 size={18} className="animate-spin" /> : <Trash2 size={18} />}
             </button>

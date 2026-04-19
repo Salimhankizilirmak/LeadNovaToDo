@@ -1,7 +1,9 @@
 'use server';
 
 import { auth, currentUser, clerkClient } from '@clerk/nextjs/server';
-import { createClerkClient } from '@/utils/supabase/server';
+import { db } from '@/db';
+import { tasks, projects, profiles, taskAttachments } from '@/db/schema';
+import { eq, and, desc } from 'drizzle-orm';
 import { sendTaskAssignmentEmail } from '@/lib/email';
 
 interface CreateTaskParams {
@@ -19,41 +21,37 @@ interface CreateTaskParams {
  */
 export async function createTaskAction(params: CreateTaskParams) {
   try {
-    const { getToken, userId } = await auth();
+    const { userId, orgId: currentOrgId } = await auth();
     const user = await currentUser();
 
     if (!userId || !user) {
       return { success: false, error: 'Oturum açılmamış. Lütfen giriş yapın.' };
     }
 
-    const token = await getToken({ template: 'supabase' });
-    if (!token) {
-      return { success: false, error: 'Supabase erişim anahtarı alınamadı.' };
+    // Güvenlik Kontrolü: Organizasyon ID eşleşmeli
+    if (params.orgId !== currentOrgId) {
+      return { success: false, error: 'Yetkisiz organizasyon işlemi.' };
     }
-
-    const supabase = await createClerkClient(token);
 
     // 1. Görevi veritabanına kaydet
-    const { data: task, error } = await supabase
-      .from('tasks')
-      .insert({
-        title: params.title,
-        description: params.description || "",
-        project_id: params.projectId,
-        org_id: params.orgId || null,
-        priority: params.priority,
-        assignee_id: params.assigneeId || null,
-        due_date: params.dueDate || null,
-        created_by: userId,
-        status: 'todo',
-      })
-      .select('*, project:projects!tasks_project_id_fkey(name, color)')
-      .single();
+    const taskId = crypto.randomUUID();
+    const [task] = await db.insert(tasks).values({
+      id: taskId,
+      title: params.title,
+      description: params.description || "",
+      projectId: params.projectId,
+      orgId: params.orgId,
+      priority: params.priority,
+      assigneeId: params.assigneeId || null,
+      dueDate: params.dueDate || null,
+      createdBy: userId,
+      status: 'todo',
+    }).returning();
 
-    if (error) {
-      console.error('Görev Kayıt Hatası:', error);
-      return { success: false, error: `Veritabanı Hatası: ${error.message}` };
-    }
+    // Proje bilgilerini join ile çek (E-posta için)
+    const project = await db.query.projects.findFirst({
+      where: eq(projects.id, params.projectId)
+    });
 
     // 2. Eğer birine atandıysa e-posta gönder
     if (params.assigneeId && params.assigneeId !== "") {
@@ -64,28 +62,22 @@ export async function createTaskAction(params: CreateTaskParams) {
         
         if (assigneeUser) {
           const toEmail = assigneeUser.emailAddresses[0]?.emailAddress;
-          console.log(`[DEBUG] Alıcı e-postası bulundu: ${toEmail}`);
-
+          
           if (toEmail) {
-            const emailResult = await sendTaskAssignmentEmail(
+            await sendTaskAssignmentEmail(
               toEmail,
               task.title,
-              task.project?.name || 'Bilinmeyen Proje',
+              project?.name || 'Bilinmeyen Proje',
               user.firstName || user.emailAddresses[0].emailAddress
             );
-            console.log(`[DEBUG] E-posta gönderim sonucu:`, emailResult.success ? 'Başarılı' : 'Başarısız');
-          } else {
-            console.warn('[DEBUG] Alıcının e-posta adresi bulunamadı.');
           }
-        } else {
-          console.warn('[DEBUG] Atanan kullanıcı Clerk üzerinde bulunamadı.');
         }
       } catch (emailError: any) {
         console.error('[DEBUG] Bildirim gönderilirken hata oluştu:', emailError.message);
       }
     }
 
-    return { success: true, task };
+    return { success: true, task: { ...task, project } };
   } catch (globalError: any) {
     console.error('SERVER ACTION CRITICAL ERROR:', globalError);
     return { success: false, error: globalError.message || 'Sunucu tarafında beklenmedik bir hata oluştu.' };
@@ -97,28 +89,125 @@ export async function createTaskAction(params: CreateTaskParams) {
  */
 export async function updateTaskStatusAction(taskId: string, newStatus: string) {
   try {
-    const { getToken, userId } = await auth();
-    if (!userId) return { success: false, error: 'Oturum açılmamış.' };
+    const { userId, orgId } = await auth();
+    if (!userId || !orgId) return { success: false, error: 'Oturum açılmamış.' };
 
-    const token = await getToken({ template: 'supabase' });
-    if (!token) return { success: false, error: 'Token alınamadı.' };
-    
-    const supabase = await createClerkClient(token);
-
-    const { data, error } = await supabase
-      .from('tasks')
-      .update({ 
-        status: newStatus,
-        updated_at: new Date().toISOString()
+    // Güvenlik: Sadece kendi organizasyonundaki görevi güncelleyebilir
+    const [updatedTask] = await db.update(tasks)
+      .set({ 
+        status: newStatus as any
       })
-      .eq('id', taskId)
-      .select('*')
-      .single();
+      .where(and(
+        eq(tasks.id, taskId),
+        eq(tasks.orgId, orgId)
+      ))
+      .returning();
 
-    if (error) throw error;
-    return { success: true, task: data };
+    if (!updatedTask) {
+      return { success: false, error: 'Görev bulunamadı veya yetkiniz yok.' };
+    }
+
+    return { success: true, task: updatedTask };
   } catch (err: any) {
     console.error('Görev Statü Güncelleme Hatası:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Dashboard için özet verileri getirir.
+ */
+export async function getDashboardDataAction() {
+  try {
+    const { userId, orgId } = await auth();
+    const user = await currentUser();
+    if (!userId || !orgId) return { success: false, error: 'Oturum bulunamadı.' };
+
+    const myRole = user?.publicMetadata?.role as string;
+    const isManager = ['Patron', 'Genel Müdür', 'Admin'].includes(myRole);
+
+    // 1. Son Görevler
+    const recentTasks = await db.query.tasks.findMany({
+      where: isManager ? eq(tasks.orgId, orgId) : and(eq(tasks.orgId, orgId), eq(tasks.assigneeId, userId)),
+      limit: 5,
+      orderBy: [desc(tasks.createdAt)],
+      with: {
+        project: true,
+        assignee: true
+      }
+    });
+
+    // 2. İstatistikler
+    const allOrgTasks = await db.query.tasks.findMany({
+      where: isManager ? eq(tasks.orgId, orgId) : and(eq(tasks.orgId, orgId), eq(tasks.assigneeId, userId)),
+      columns: {
+        status: true,
+        priority: true
+      }
+    });
+
+    const stats = {
+      total: allOrgTasks.length,
+      completed: allOrgTasks.filter(t => t.status === 'done').length,
+      pending: allOrgTasks.filter(t => t.status !== 'done').length,
+      critical: allOrgTasks.filter(t => t.priority === 'critical').length,
+    };
+
+    return { success: true, tasks: recentTasks, stats };
+  } catch (err: any) {
+    console.error('DASHBOARD DATA ERROR:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Görev Eklerini Kaydetme (UploadThing sonrası)
+ */
+export async function addTaskAttachmentAction(taskId: string, fileName: string, fileUrl: string, fileSize?: number, fileType?: string) {
+  try {
+    const { userId, orgId } = await auth();
+    if (!userId || !orgId) return { success: false, error: 'Oturum açılmamış.' };
+
+    const attachmentId = crypto.randomUUID();
+    const [attachment] = await db.insert(taskAttachments).values({
+      id: attachmentId,
+      taskId,
+      fileName,
+      fileUrl,
+      fileSize,
+      fileType,
+      createdBy: userId
+    }).returning();
+
+    return { success: true, attachment };
+  } catch (err: any) {
+    console.error('EKLER KAYIT HATASI:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Mevcut kullanıcıya atanan tüm görevleri projesiyle birlikte getirir.
+ */
+export async function getMyTasksAction() {
+  try {
+    const { userId, orgId } = await auth();
+    if (!userId || !orgId) return { success: false, error: 'Oturum bulunamadı.' };
+
+    const data = await db.query.tasks.findMany({
+      where: and(
+        eq(tasks.assigneeId, userId),
+        eq(tasks.orgId, orgId)
+      ),
+      with: {
+        project: true
+      },
+      orderBy: [desc(tasks.createdAt)]
+    });
+
+    return { success: true, tasks: data };
+  } catch (err: any) {
+    console.error('TAKIVM GÖREV HATASI:', err);
     return { success: false, error: err.message };
   }
 }

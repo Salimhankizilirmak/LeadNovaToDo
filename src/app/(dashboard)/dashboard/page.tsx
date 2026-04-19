@@ -6,11 +6,11 @@ import {
   Plus, 
   ChevronRight,
   LayoutGrid,
-  Calendar,
   Layers,
 } from 'lucide-react';
 import Link from 'next/link';
-import { createClerkClient } from '@/utils/supabase/server';
+import { getDashboardDataAction } from '@/app/actions/tasks';
+import { getProjectsAction } from '@/app/actions/projects';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,74 +58,31 @@ function StatCard({
 
 /* ── Ana Sayfa (Server Component) ─────────────────────────── */
 export default async function DashboardPage() {
-  const { getToken, userId, orgId } = await auth();
-  const token = await getToken({ template: 'supabase' });
+  const { userId } = await auth();
   const user = await currentUser();
 
-  if (!token || !userId) {
-    return <div>Oturum açılmamış.</div>;
+  if (!userId || !user) {
+    return (
+      <div className="h-[60vh] flex items-center justify-center">
+        <p className="text-gray-500 font-medium">Oturum açılmamış. Lütfen giriş yapın.</p>
+      </div>
+    );
   }
 
-  const supabase = await createClerkClient(token);
-  const myRole = user?.publicMetadata?.role as string;
-  const isManager = myRole === 'Patron' || myRole === 'Genel Müdür' || myRole === 'Admin';
+  // Verileri Server Action'lar üzerinden çek (Drizzle & Manual RLS)
+  const [dashboardResp, projectsResp] = await Promise.all([
+    getDashboardDataAction(),
+    getProjectsAction(3)
+  ]);
 
-  // 1. Görev Sorgusu (Managers see all org tasks, others see assigned)
-  const taskQuery = supabase
-    .from('tasks')
-    .select('*, project:projects!tasks_project_id_fkey(name, color), assignee:profiles!fk_tasks_assignee(full_name, avatar_url)')
-    .order('created_at', { ascending: false })
-    .limit(5);
-
-  if (isManager && orgId) {
-    taskQuery.eq('org_id', orgId);
-  } else {
-    taskQuery.eq('assignee_id', userId);
-  }
-
-  // 2. Proje Sorgusu (RLS yardımıyla yetkili olan tüm projeler)
-  const projectQuery = supabase
-    .from('projects')
-    .select('*')
-    .limit(3);
-
-  // 3. İstatistik Sorgusu
-  const statsQuery = supabase
-    .from('tasks')
-    .select('status, priority');
-
-  if (isManager && orgId) {
-    statsQuery.eq('org_id', orgId);
-  } else {
-    statsQuery.eq('assignee_id', userId);
-  }
-
-  // Verileri paralel getir
-  const [
-    { data: tasksData, error: taskError },
-    { data: projectsData, error: projectError },
-    { data: allTasks, error: statsError }
-  ] = await Promise.all([taskQuery, projectQuery, statsQuery]);
-
-  const tasks = tasksData || [];
-  const projects = projectsData || [];
-
-  if (taskError) console.error("Dashboard tasks error:", taskError);
-  if (projectError) console.error("Dashboard projects error:", projectError);
-
-  // İstatistikleri hesapla
-  const stats: DashboardStats = {
-    total: allTasks?.length || 0,
-    completed: allTasks?.filter(t => t.status === 'done').length || 0,
-    pending: allTasks?.filter(t => t.status !== 'done').length || 0,
-    critical: allTasks?.filter(t => t.priority === 'critical').length || 0,
-  };
+  const tasks = dashboardResp.success ? dashboardResp.tasks : [];
+  const stats = dashboardResp.success ? (dashboardResp.stats as DashboardStats) : { total: 0, completed: 0, pending: 0, critical: 0 };
+  const projects = projectsResp.success ? projectsResp.projects : [];
 
   const displayName = user?.firstName || user?.emailAddresses[0]?.emailAddress?.split('@')[0] || 'Kullanıcı';
 
   return (
     <div className="space-y-10 pb-10">
-      {/* Karşılama - Bu alanın sunucu tarafında render edildiğinden emin oluyoruz */}
       <div className="flex flex-col gap-2">
         <h1 className="text-4xl font-black text-gray-900 tracking-tighter">
           Merhaba, {displayName}! 👋
@@ -135,7 +92,6 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      {/* İstatistikler */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard 
           title="Toplam Görev" 
@@ -165,7 +121,6 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        {/* Son Görevler */}
         <div className="xl:col-span-2 space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-black text-gray-900 tracking-tight flex items-center gap-2">
@@ -180,7 +135,7 @@ export default async function DashboardPage() {
           <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm overflow-hidden">
             {tasks && tasks.length > 0 ? (
               <div className="divide-y divide-gray-50">
-                {tasks.map((task) => (
+                {tasks.map((task: any) => (
                   <div key={task.id} className="p-6 hover:bg-gray-50/50 transition-colors flex items-center justify-between group">
                     <div className="flex items-center gap-4">
                       <div className={`w-2 h-2 rounded-full ${task.status === 'done' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
@@ -218,7 +173,6 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        {/* Yan Panel: Aktif Projeler */}
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-black text-gray-900 tracking-tight">Aktif Projeler</h2>
@@ -229,7 +183,7 @@ export default async function DashboardPage() {
 
           <div className="space-y-4">
             {projects && projects.length > 0 ? (
-              projects.map((project) => (
+              projects.map((project: any) => (
                 <div key={project.id} className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm hover:border-indigo-100 transition-all cursor-pointer">
                   <div className="flex items-center gap-3">
                     <div className="w-1.5 h-10 rounded-full" style={{ backgroundColor: project.color }} />

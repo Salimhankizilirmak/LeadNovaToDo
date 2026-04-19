@@ -20,13 +20,13 @@ export interface Member {
 
 export interface TaskAttachment {
   id: string;
-  task_id: string;
-  file_name: string;
-  file_path: string;
-  file_size: number;
-  file_type?: string;
-  uploaded_by: string;
-  created_at: string;
+  taskId: string;
+  fileName: string;
+  fileUrl: string;
+  fileSize: number;
+  fileType?: string;
+  createdBy: string;
+  createdAt: string;
 }
 
 export interface Task {
@@ -35,13 +35,13 @@ export interface Task {
   description: string | null;
   status: 'todo' | 'in_progress' | 'done';
   priority: 'low' | 'medium' | 'high' | 'critical';
-  due_date: string | null;
-  project_id: string;
-  assignee_id: string | null;
-  created_by: string;
-  org_id: string;
-  created_at: string;
-  updated_at: string;
+  dueDate: string | null;
+  projectId: string;
+  assigneeId: string | null;
+  createdBy: string;
+  orgId: string;
+  createdAt: string;
+  updatedAt: string;
   assignee?: Member | null;
   project?: { name: string; color: string } | null;
   attachments?: TaskAttachment[];

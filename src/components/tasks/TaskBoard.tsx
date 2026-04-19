@@ -54,11 +54,11 @@ function KanbanCard({ task, onOpen, onMove }: TaskCardProps) {
         </div>
 
         {/* Info Area */}
-        {task.due_date && (
+        {task.dueDate && (
           <div className="flex items-center gap-1.5 text-gray-400">
             <Calendar size={12} />
             <span className="text-[11px] font-medium">
-              {new Date(task.due_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
+              {new Date(task.dueDate).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
             </span>
           </div>
         )}

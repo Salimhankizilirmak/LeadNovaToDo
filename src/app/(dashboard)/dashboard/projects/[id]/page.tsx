@@ -1,303 +1,44 @@
-'use client';
+import { getProjectAction } from '@/app/actions/projects';
+import { getOrgProfiles } from '@/app/actions/users';
+import ProjectDetailView from '@/components/projects/ProjectDetailView';
+import { notFound } from 'next/navigation';
 
-import { useEffect, useState, useMemo } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { 
-  Plus, 
-  LayoutGrid, 
-  List, 
-  Search, 
-  ChevronRight,
-  Loader2,
-} from 'lucide-react';
-import { toast } from 'sonner';
-import { useUser } from '@clerk/nextjs';
-import { useSupabase } from '@/hooks/use-supabase';
-import TaskBoard from '@/components/tasks/TaskBoard';
-import TaskList from '@/components/tasks/TaskList';
-import TaskSlideOver from '@/components/tasks/TaskSlideOver';
-import CreateTaskModal from '@/components/tasks/CreateTaskModal';
-import { Task, Member } from '@/types/task';
+export const dynamic = 'force-dynamic';
 
-interface Project {
-  id: string;
-  name: string;
-  color: string;
-  org_id: string;
-  manager_id?: string | null;
+interface ProjectPageProps {
+  params: Promise<{ id: string }>;
 }
 
-export default function ProjectDetailPage() {
-  const { id } = useParams();
-  const router = useRouter();
-  const { user } = useUser();
-  const { getSupabase } = useSupabase();
-  const [project, setProject] = useState<Project | null>(null);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
-  
-  // UI States
-  const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [isSlideOverOpen, setIsSlideOverOpen] = useState(false);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+/**
+ * Proje Detay Sayfası (Server Component)
+ */
+export default async function ProjectPage({ params }: ProjectPageProps) {
+  const { id } = await params;
 
-  /* ── Yetki Kontrolleri ─────────────────────────────────────── */
-  const myRole = user?.publicMetadata?.role as string;
-  const isManager = myRole === 'Patron' || myRole === 'Genel Müdür' || myRole === 'Admin';
-  const isProjectManager = project?.manager_id === user?.id;
-  const canManageTasks = isManager || isProjectManager;
+  // 1. Veriyi Drizzle üzerinden çek (Manual RLS içerir)
+  const projectResp = await getProjectAction(id);
 
-  /* ── Data Fetching ────────────────────────────────────────── */
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const supabase = await getSupabase();
-        
-        // 1. Fetch Project
-        const { data: projData, error: projError } = await supabase
-          .from('projects')
-          .select('*')
-          .eq('id', id)
-          .single();
-
-        if (projError || !projData) {
-          toast.error('Proje bulunamadı.');
-          router.push('/dashboard/projects');
-          return;
-        }
-        setProject(projData);
-
-        // 2. Fetch Organization Members via Profiles
-        const targetOrgId = projData.org_id;
-        
-        let { data: profileData, error: profileError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('org_id', targetOrgId);
-        
-        // Eğer hiçbir üye bulunamadıysa ve projenin org_id'si boşsa, 
-        // kullanıcının kendi profiliyle aynı organizasyondaki kişileri getirmeyi deneyelim (Fallback)
-        if ((!profileData || profileData.length === 0) && !profileError) {
-          const { data: ownProfile } = await supabase
-            .from('profiles')
-            .select('org_id')
-            .limit(1)
-            .single();
-            
-          if (ownProfile?.org_id) {
-            const { data: fallbackData } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('org_id', ownProfile.org_id);
-            if (fallbackData) profileData = fallbackData;
-          }
-        }
-        
-        if (profileData) {
-          setMembers(profileData.map(p => ({
-            id: p.id,
-            full_name: p.full_name,
-            display_name: p.full_name,
-            role: p.role,
-            avatar_url: p.avatar_url
-          })));
-        }
-
-        // 3. Fetch Tasks with profile join for assignee
-        const { data: taskData, error: taskError } = await supabase
-          .from('tasks')
-          .select('*, assignee:profiles!fk_tasks_assignee(full_name, avatar_url, role)')
-          .eq('project_id', id)
-          .order('created_at', { ascending: false });
-
-        if (taskError) throw taskError;
-        setTasks((taskData as Task[]) || []);
-      } catch {
-        toast.error('Veriler yüklenirken bir hata oluştu.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [id, router, getSupabase]);
-
-  /* ── Optimistic Updates & Handlers ───────────────────────── */
-  const handleUpdateTaskStatus = async (taskId: string, newStatus: 'todo' | 'in_progress' | 'done') => {
-    // 1. Save old state for rollback
-    const previousTasks = [...tasks];
-    
-    // 2. Update UI immediately (Optimistic)
-    setTasks(tasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
-
-    try {
-      const supabase = await getSupabase();
-      const { error } = await supabase
-        .from('tasks')
-        .update({ status: newStatus })
-        .eq('id', taskId);
-
-      if (error) throw error;
-    } catch {
-      // 3. Rollback on error
-      setTasks(previousTasks);
-      toast.error('İşlem başarısız oldu. Lütfen tekrar deneyin.');
-    }
-  };
-
-  const filteredTasks = useMemo(() => {
-    return tasks.filter(t => 
-      t.title.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [tasks, searchQuery]);
-
-  const handleUpdateTask = (updatedTask: Task) => {
-    setTasks(tasks.map(t => t.id === updatedTask.id ? updatedTask : t));
-    if (selectedTask?.id === updatedTask.id) {
-      setSelectedTask(updatedTask);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="h-[60vh] flex flex-col items-center justify-center gap-4">
-        <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
-        <p className="text-sm font-medium text-gray-400">Proje Detayları Yükleniyor...</p>
-      </div>
-    );
+  if (!projectResp.success || !projectResp.project) {
+    return notFound();
   }
 
+  const project = projectResp.project;
+
+  // 2. Organizasyon üyelerini çek (Görev ataması için)
+  const profilesResp = await getOrgProfiles(project.orgId);
+  const members = (profilesResp.success && profilesResp.profiles) ? profilesResp.profiles.map((p: any) => ({
+    id: p.id,
+    full_name: p.fullName,
+    display_name: p.fullName,
+    role: p.role,
+    avatar_url: p.avatarUrl
+  })) : [];
+
   return (
-    <div className="space-y-6">
-      {/* Breadcrumbs & Title */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-gray-400 text-xs font-bold uppercase tracking-widest">
-            <button 
-              onClick={() => router.push('/dashboard/projects')}
-              className="hover:text-indigo-600 transition-colors"
-            >
-              Projeler
-            </button>
-            <ChevronRight size={14} />
-            <span className="text-gray-900">{project?.name}</span>
-          </div>
-          <div className="flex items-center gap-3">
-             <div className="w-1 h-8 rounded-full" style={{ backgroundColor: project?.color }} />
-             <h1 className="text-2xl font-black text-gray-900 tracking-tight">
-               {project?.name}
-             </h1>
-          </div>
-        </div>
-
-        {/* View Toggle & Add Task */}
-        <div className="flex items-center gap-3">
-          <div className="bg-white p-1 rounded-xl border border-gray-100 shadow-sm flex items-center">
-            <button
-              onClick={() => setViewMode('kanban')}
-              className={`p-2 rounded-lg transition-all ${viewMode === 'kanban' ? 'bg-indigo-50 text-indigo-600 shadow-sm ring-1 ring-indigo-100' : 'text-gray-400 hover:text-gray-600'}`}
-              title="Kanban Görünümü"
-            >
-              <LayoutGrid size={18} />
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className={`p-2 rounded-lg transition-all ${viewMode === 'list' ? 'bg-indigo-50 text-indigo-600 shadow-sm ring-1 ring-indigo-100' : 'text-gray-400 hover:text-gray-600'}`}
-              title="Liste Görünümü"
-            >
-              <List size={18} />
-            </button>
-          </div>
-          
-          {canManageTasks && (
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-indigo-500/20 transition-all active:scale-95"
-            >
-              <Plus size={18} />
-              <span>Yeni Görev</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Toolbar: Search */}
-      <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-        <div className="relative w-full sm:max-w-xs">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-          <input
-            type="text"
-            placeholder="Görevlerde ara..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-100 rounded-xl text-sm focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 transition-all placeholder-gray-400 shadow-sm"
-          />
-        </div>
-        
-        <div className="flex items-center gap-4 text-[11px] font-bold text-gray-400 uppercase tracking-widest px-4">
-           <span>Toplam: {filteredTasks.length}</span>
-           <span>Tamamlanan: {filteredTasks.filter(t => t.status === 'done').length}</span>
-        </div>
-      </div>
-
-      {/* View Content */}
-      <div className="pt-2">
-        {viewMode === 'kanban' ? (
-          <TaskBoard
-            tasks={filteredTasks}
-            onOpenTask={(task) => {
-              setSelectedTask(task);
-              setIsSlideOverOpen(true);
-            }}
-            onMoveTask={handleUpdateTaskStatus}
-          />
-        ) : (
-          <TaskList
-            tasks={filteredTasks}
-            onOpenTask={(task) => {
-              setSelectedTask(task);
-              setIsSlideOverOpen(true);
-            }}
-            onToggleDone={(id, cur) => handleUpdateTaskStatus(id, cur === 'done' ? 'todo' : 'done')}
-          />
-        )}
-      </div>
-
-      {/* Modals & SlideOvers */}
-      <CreateTaskModal
-        projectId={id as string}
-        orgId={project?.org_id || ''}
-        members={members}
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onCreated={(newTask) => {
-          // If the new task came with assignee data, we might need a re-fetch or manual mapping
-          // but usually CreateTaskModal.tsx will return the inserted row.
-          // Since it's a new task, we'll likely need to fetch the assignee details manually or 
-          // just let it be. For now, let's assume CreateTaskModal handles it or user will re-fetch.
-          setTasks([newTask, ...tasks]);
-          setIsModalOpen(false);
-        }}
-      />
-
-      <TaskSlideOver
-        key={selectedTask?.id}
-        task={selectedTask}
-        members={members}
-        isOpen={isSlideOverOpen}
-        onClose={() => {
-          setIsSlideOverOpen(false);
-          setSelectedTask(null);
-        }}
-        onUpdated={handleUpdateTask}
-        onDeleted={(taskId) => {
-          setTasks(tasks.filter(t => t.id !== taskId));
-        }}
-      />
-    </div>
+    <ProjectDetailView 
+      initialProject={project}
+      initialTasks={project.tasks || []}
+      members={members}
+    />
   );
 }

@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { X, Loader2, FolderPlus } from 'lucide-react';
 import { useUser, useOrganization } from '@clerk/nextjs';
-import { useSupabase } from '@/hooks/use-supabase';
+import { createProjectAction, getOrgMembersAction } from '@/app/actions/projects';
 
 /* ── Tipler ─────────────────────────────────────────────────── */
 export interface Project {
@@ -16,9 +16,9 @@ export interface Project {
   description: string | null;
   color: string;
   status: string;
-  org_id: string;
-  created_by: string;
-  created_at: string;
+  orgId: string;
+  createdBy: string;
+  createdAt: string;
 }
 
 /* ── Sabitler ───────────────────────────────────────────────── */
@@ -34,81 +34,14 @@ const COLOR_OPTIONS = [
 const schema = z.object({
   name: z.string().min(3, 'Proje adı en az 3 karakter olmalıdır').max(80),
   description: z.string().max(300).optional(),
-  manager_id: z.string().optional().nullable(),
+  managerId: z.string().optional().nullable(),
 });
 type FormValues = z.infer<typeof schema>;
-
-/* ── Organizasyon Yardımcısı ────────────────────────────────── */
-async function ensureOrgId(supabase: any, userId: string, clerkOrgId?: string | null): Promise<string> {
-  // 1. Eğer Clerk üzerinde bir organizasyon seçiliyse, onu öncelikli kılalım
-  if (clerkOrgId) {
-    // Supabase'de bu organizasyon var mı kontrol et, yoksa kaydet
-    const { data: existingOrg } = await supabase
-      .from('organizations')
-      .select('id')
-      .eq('id', clerkOrgId)
-      .single();
-
-    if (!existingOrg) {
-      await supabase.from('organizations').insert({
-        id: clerkOrgId,
-        name: 'Clerk Organizasyonu',
-        owner_id: userId
-      });
-    }
-
-    // Üyelik kaydı (org_members) kontrolü ve ekleme
-    const { data: member } = await supabase
-      .from('org_members')
-      .select('id')
-      .eq('org_id', clerkOrgId)
-      .eq('user_id', userId)
-      .single();
-
-    if (!member) {
-      await supabase.from('org_members').insert({
-        org_id: clerkOrgId,
-        user_id: userId,
-        role: 'admin'
-      });
-    }
-
-    return clerkOrgId;
-  }
-
-  // 2. Clerk organizasyonu yoksa (Kişisel Çalışma Alanı), mevcut bir tane ara
-  const { data: personalMember } = await supabase
-    .from('org_members')
-    .select('org_id')
-    .eq('user_id', userId)
-    .limit(1)
-    .single();
-
-  if (personalMember?.org_id) return personalMember.org_id;
-
-  // 3. Hiç yoksa yeni bir tane oluştur
-  const { data: newOrg, error: orgError } = await supabase
-    .from('organizations')
-    .insert({ name: 'Kişisel Çalışma Alanı', owner_id: userId })
-    .select('id')
-    .single();
-
-  if (orgError || !newOrg) throw new Error('Organizasyon oluşturulamadı.');
-
-
-  const { error: memberError } = await supabase
-    .from('org_members')
-    .insert({ org_id: newOrg.id, user_id: userId, role: 'admin' });
-
-  if (memberError) throw new Error('Üyelik kaydı oluşturulamadı.');
-
-  return newOrg.id;
-}
 
 /* ── Modal Bileşeni ─────────────────────────────────────────── */
 interface CreateProjectModalProps {
   onClose: () => void;
-  onCreated: (project: Project) => void;
+  onCreated: (project: any) => void;
 }
 
 export default function CreateProjectModal({
@@ -116,10 +49,7 @@ export default function CreateProjectModal({
   onCreated,
 }: CreateProjectModalProps) {
   const { user } = useUser();
-  const { organization } = useOrganization();
-  const { getSupabase } = useSupabase();
   const userId = user?.id ?? null;
-  const clerkOrgId = organization?.id ?? null;
   const [selectedColor, setSelectedColor] = useState(COLOR_OPTIONS[0].hex);
   const [submitting, setSubmitting] = useState(false);
   const [members, setMembers] = useState<any[]>([]);
@@ -127,81 +57,50 @@ export default function CreateProjectModal({
   const {
     register,
     handleSubmit,
-    setValue,
     formState: { errors },
   } = useForm<FormValues>({ 
     resolver: zodResolver(schema),
     defaultValues: {
-      manager_id: null
+      managerId: null
     }
   });
 
   // Üyeleri yükle
-  useState(() => {
+  useEffect(() => {
     async function loadMembers() {
-      const supabase = await getSupabase();
-      // Önce bu kullanıcının organizasyonunu bul
-      let targetOrgId = clerkOrgId;
-      if (!targetOrgId) {
-        const { data: prof } = await supabase.from('profiles').select('org_id').eq('id', userId).single();
-        targetOrgId = prof?.org_id;
-      }
-      
-      if (targetOrgId) {
-        const { data } = await supabase
-          .from('profiles')
-          .select('id, full_name, email')
-          .eq('org_id', targetOrgId);
-        if (data) setMembers(data);
+      const result = await getOrgMembersAction();
+      if (result.success && result.members) {
+        setMembers(result.members);
       }
     }
     if (userId) loadMembers();
-  });
+  }, [userId]);
 
   const onSubmit = async (values: FormValues) => {
     if (!userId) return;
     setSubmitting(true);
 
     try {
-      const supabase = await getSupabase();
-      
-      console.log('--- Proje Oluşturma Başı ---');
-      const orgId = await ensureOrgId(supabase, userId, clerkOrgId);
-      console.log('Kullanılan OrgID:', orgId);
+      const result = await createProjectAction({
+        name: values.name,
+        description: values.description,
+        color: selectedColor,
+        managerId: values.managerId || undefined
+      });
 
-      const { data, error } = await supabase
-        .from('projects')
-        .insert({
-          name: values.name,
-          description: values.description ?? null,
-          color: selectedColor,
-          org_id: orgId,
-          created_by: userId,
-          manager_id: values.manager_id || null, // Sorumlu ID
-          status: 'active',
-        })
-        .select('*')
-        .single();
-
-      if (error) {
-        console.error('Supabase Proje Insert Hatası:', error);
-        throw error;
-      }
+      if (!result.success) throw new Error(result.error);
 
       toast.success('Proje başarıyla oluşturuldu ✓');
-      onCreated(data as Project);
+      onCreated(result.project);
       onClose();
     } catch (error: any) {
-      console.error('Proje Oluşturma Teknik Detay:', error);
-      const errorMessage = error.message || 'Bir sorun oluştu. Lütfen tekrar deneyin.';
-      toast.error(`Hata: ${errorMessage}`);
+      toast.error(`Hata: ${error.message}`);
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    /* Backdrop */
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
@@ -248,13 +147,13 @@ export default function CreateProjectModal({
               Projeden Sorumlu Personel
             </label>
             <select
-              {...register('manager_id')}
+              {...register('managerId')}
               className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 bg-gray-50 text-gray-900 outline-none focus:border-indigo-400 focus:bg-white transition-colors cursor-pointer"
             >
               <option value="">Sorumlu seçilmedi</option>
               {members.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.full_name} ({m.email?.split('@')[0]})
+                  {m.fullName} ({m.email?.split('@')[0]})
                 </option>
               ))}
             </select>

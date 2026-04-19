@@ -7,7 +7,6 @@ import { z } from 'zod';
 import { toast } from 'sonner';
 import { X, Loader2, ClipboardCheck } from 'lucide-react';
 import { useUser } from '@clerk/nextjs';
-import { useSupabase } from '@/hooks/use-supabase';
 import { createTaskAction } from '@/app/actions/tasks';
 import { Task, Member } from '@/types/task';
 
@@ -16,8 +15,8 @@ const schema = z.object({
   title: z.string().min(1, 'Görev başlığı zorunludur').max(120),
   description: z.string().max(500).optional(),
   priority: z.enum(['low', 'medium', 'high', 'critical']),
-  assignee_id: z.string().optional().nullable(),
-  due_date: z.string().optional().nullable(),
+  assigneeId: z.string().optional().nullable(),
+  dueDate: z.string().optional().nullable(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -40,9 +39,7 @@ export default function CreateTaskModal({
   onClose,
   onCreated,
 }: CreateTaskModalProps) {
-  // TODO Sprint 2: Clerk userId → Supabase user_id mapping eklenecek
   const { user } = useUser();
-  const { getSupabase } = useSupabase();
   const userId = user?.id ?? null;
   const [submitting, setSubmitting] = useState(false);
 
@@ -54,7 +51,7 @@ export default function CreateTaskModal({
     resolver: zodResolver(schema),
     defaultValues: {
       priority: 'medium',
-      assignee_id: null,
+      assigneeId: null,
       description: '',
     },
   });
@@ -71,8 +68,8 @@ export default function CreateTaskModal({
         priority: values.priority,
         projectId: projectId,
         orgId: orgId,
-        assigneeId: values.assignee_id,
-        dueDate: values.due_date,
+        assigneeId: values.assigneeId,
+        dueDate: values.dueDate,
       });
 
       if (!result.success) throw new Error(result.error || 'Görev oluşturulamadı');
@@ -82,9 +79,7 @@ export default function CreateTaskModal({
       onClose();
     } catch (err: any) {
       console.error('GÖREV OLUŞTURMA HATASI:', err);
-      const errorMessage = err.message || 'Görev eklenirken bir hata oluştu.';
-      const detail = err.details ? ` (${err.details})` : '';
-      toast.error(`${errorMessage}${detail}`);
+      toast.error(err.message || 'Görev eklenirken bir hata oluştu.');
     } finally {
       setSubmitting(false);
     }
@@ -114,7 +109,6 @@ export default function CreateTaskModal({
 
         {/* Form */}
         <form onSubmit={handleSubmit(onSubmit)} className="p-5 sm:p-7 space-y-6">
-          {/* Görev Başlığı */}
           <div className="space-y-2">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">
               Görev Başlığı
@@ -136,7 +130,6 @@ export default function CreateTaskModal({
             )}
           </div>
           
-          {/* Açıklama */}
           <div className="space-y-2">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">
               Açıklama (Opsiyonel)
@@ -149,7 +142,6 @@ export default function CreateTaskModal({
             />
           </div>
 
-          {/* Öncelik */}
           <div className="space-y-2">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">
               Öncelik
@@ -179,37 +171,34 @@ export default function CreateTaskModal({
             </div>
           </div>
 
-          {/* Atanan Kişi */}
           <div className="space-y-2">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">
               Atanan Kişi (Opsiyonel)
             </label>
             <select
-              {...register('assignee_id')}
+              {...register('assigneeId')}
               className="w-full px-4 py-3 text-sm rounded-xl border border-gray-100 bg-gray-50 text-gray-900 focus:bg-white focus:border-indigo-400 transition-all outline-none appearance-none cursor-pointer"
             >
               <option value="">Atanmamış</option>
               {members.map((member) => (
                 <option key={member.id} value={member.id}>
-                  {member.display_name || member.email?.split('@')[0] || `Kullanıcı (${member.id.substring(0, 5)})`}
+                  {member.display_name || member.full_name || member.email?.split('@')[0]}
                 </option>
               ))}
             </select>
           </div>
           
-          {/* Bitiş Tarihi */}
           <div className="space-y-2">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">
               Bitiş Tarihi (Opsiyonel)
             </label>
             <input
               type="date"
-              {...register('due_date')}
+              {...register('dueDate')}
               className="w-full px-4 py-3 text-sm rounded-xl border border-gray-100 bg-gray-50 text-gray-900 focus:bg-white focus:border-indigo-400 transition-all outline-none cursor-pointer"
             />
           </div>
 
-          {/* Footer */}
           <div className="flex gap-3 pt-2">
             <button
               type="button"
