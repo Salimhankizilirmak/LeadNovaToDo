@@ -6,20 +6,44 @@ import { UserRole } from '@/types/task';
 
 /**
  * Kullanıcının Clerk bilgilerini Supabase 'profiles' tablosuna senkronize eder.
+ * Token bazlı yetkilendirme ve organizasyon otomatik eşleme içerir.
  */
+import { createClerkClient } from '@/utils/supabase/server';
+
 export async function syncProfile() {
   try {
-    const { userId, orgId } = await auth();
+    const { userId, orgId, getToken } = await auth();
     const user = await currentUser();
 
     if (!userId || !user) return { success: false, error: 'Oturum bulunamadı' };
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    // 1. Clerk-Supabase Token Al (RLS için kritik)
+    const token = await getToken({ template: 'supabase' });
+    if (!token) {
+      console.warn('[Sync] Supabase token alınamadı, anonim erişim denenecek (Service role eksikse fail edebilir)');
+    }
+
+    // 2. Yetkili Supabase İstemcisi Oluştur
+    const supabase = await createClerkClient(token || '');
+
+    // 3. Organizasyon Bilgisini Garantile
+    let targetOrgId = orgId;
+    
+    if (!targetOrgId) {
+      const clerk = await getClerkClient();
+      console.log('[Sync] OrgID oturumda yok, Clerk üyelerinden sorgulanıyor...');
+      const memberships = await clerk.users.getOrganizationMembershipList({ userId });
+      
+      if (memberships.data && memberships.data.length > 0) {
+        targetOrgId = memberships.data[0].organization.id;
+        console.log('[Sync] Kullanıcının üye olduğu organizasyon bulundu:', targetOrgId);
+      }
+    }
 
     const role = (user.publicMetadata?.role as UserRole) || 'Personel';
     const full_name = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.emailAddresses[0]?.emailAddress || 'Kullanıcı';
+
+    console.log('[Sync] Veritabanı işlemi başlatılıyor...', { userId, targetOrgId, role });
 
     const { data, error } = await supabase
       .from('profiles')
@@ -29,13 +53,18 @@ export async function syncProfile() {
         email: user.emailAddresses[0]?.emailAddress || '',
         avatar_url: user.imageUrl,
         role: role,
-        org_id: orgId || null,
+        org_id: targetOrgId || null,
         updated_at: new Date().toISOString()
       }, { onConflict: 'id' })
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('[Sync] Supabase Upsert Hatası:', error);
+      throw error;
+    }
+
+    console.log('[Sync] Başarılı! Profil oluşturuldu/güncellendi:', data.id);
     return { success: true, profile: data };
   } catch (err: any) {
     console.error('PROFIL SENKRONIZASYON HATASI:', err);
