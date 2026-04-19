@@ -100,7 +100,10 @@ export default function CreateProjectModal({
       if (!token) throw new Error('Oturum anahtarı alınamadı.');
 
       const supabase = createClerkClient(token);
+      
+      console.log('--- Proje Oluşturma Başı ---');
       const orgId = await ensureOrgId(userId, token);
+      console.log('Kullanılan OrgID:', orgId);
 
       const { data, error } = await supabase
         .from('projects')
@@ -115,13 +118,18 @@ export default function CreateProjectModal({
         .select('id, name, description, color, status, org_id, created_by, created_at')
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase Proje Insert Hatası:', error);
+        throw error;
+      }
 
       toast.success('Proje başarıyla oluşturuldu ✓');
       onCreated(data as Project);
       onClose();
-    } catch {
-      toast.error('Bir sorun oluştu. Lütfen tekrar deneyin.');
+    } catch (error: any) {
+      console.error('Proje Oluşturma Teknik Detay:', error);
+      const errorMessage = error.message || 'Bir sorun oluştu. Lütfen tekrar deneyin.';
+      toast.error(`Hata: ${errorMessage}`);
     } finally {
       setSubmitting(false);
     }

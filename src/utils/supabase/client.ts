@@ -10,7 +10,13 @@ import { createBrowserClient } from '@supabase/ssr';
  */
 export function createClient() {
   const { url, key } = getEnv();
-  return createBrowserClient(url, key);
+  return createBrowserClient(url, key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false
+    }
+  });
 }
 
 /**
@@ -22,6 +28,11 @@ export function createClerkClient(clerkToken: string) {
   const { url, key } = getEnv();
 
   return createBrowserClient(url, key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false
+    },
     global: {
       headers: {
         Authorization: `Bearer ${clerkToken}`,
