@@ -28,7 +28,7 @@ export default function TaskSlideOver({
   const [title, setTitle] = useState(task?.title || '');
   const [description, setDescription] = useState(task?.description || '');
   const [priority, setPriority] = useState<Task['priority']>((task?.priority as Task['priority']) || 'medium');
-  const [dueDate, setDueDate] = useState(task?.due_date || '');
+  const [dueDate, setDueDate] = useState(task?.due_date ? task.due_date.substring(0, 10) : '');
   const [assigneeId, setAssigneeId] = useState<string | null>(task?.assignee_id || null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);

@@ -53,22 +53,26 @@ export async function createTaskAction(params: CreateTaskParams) {
   }
 
   // 2. Eğer birine atandıysa ve atanan kişi ben değilsem e-posta gönder
-  if (params.assigneeId && params.assigneeId !== userId) {
+  if (params.assigneeId && params.assigneeId !== "" && params.assigneeId !== userId) {
     try {
+      // Clerk v6 best practice: Use await clerkClient()
       const client = await clerkClient();
       const assigneeUser = await client.users.getUser(params.assigneeId);
-      const toEmail = assigneeUser.emailAddresses[0]?.emailAddress;
+      
+      if (assigneeUser) {
+        const toEmail = assigneeUser.emailAddresses[0]?.emailAddress;
 
-      if (toEmail) {
-        await sendTaskAssignmentEmail(
-          toEmail,
-          task.title,
-          task.project?.name || 'Bilinmeyen Proje',
-          user.firstName || user.emailAddresses[0].emailAddress
-        );
+        if (toEmail) {
+          await sendTaskAssignmentEmail(
+            toEmail,
+            task.title,
+            task.project?.name || 'Bilinmeyen Proje',
+            user.firstName || user.emailAddresses[0].emailAddress
+          );
+        }
       }
-    } catch (emailError) {
-      console.error('Bildirim gönderilirken hata oluştu (Görev oluştu):', emailError);
+    } catch (emailError: any) {
+      console.error('Bildirim gönderilirken hata oluştu (Görev oluştu):', emailError.message);
       // E-posta hatası kritik değil, görev oluştu sonuçta.
     }
   }
