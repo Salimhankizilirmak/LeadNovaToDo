@@ -133,15 +133,36 @@ export async function updateUserRoleAction(targetUserId: string, newRole: UserRo
     const clerk = await getClerkClient();
     const user = await currentUser();
     
-    const myRole = user?.publicMetadata?.role as UserRole;
+    // 1. Mevcut rolü tespit et
+    let myRole = user?.publicMetadata?.role as UserRole;
+    
+    // Eğer Clerk'te yoksa Veritabanından yedek kontrol yap (KRİTİK)
+    if (!myRole) {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
+      const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
+      
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .single();
+        
+      if (profile?.role) {
+        myRole = profile.role as UserRole;
+        console.log('[Auth] Yetki veritabanından doğrulandı:', myRole);
+      }
+    }
     
     // Hedef kullanıcının mevcut rollerini al
     const targetUser = await clerk.users.getUser(targetUserId);
     const targetRole = targetUser.publicMetadata?.role as UserRole;
 
+    console.log('[Auth] Yetki Kontrolü:', { myRole, targetRole, action: 'Update Role' });
+
     // Hiyerarşik Yetki Kontrolü
     if (myRole === 'Patron') {
-      // Patron sadece kendisi dışındaki diğer Patronları değiştiremez (isteğe bağlı)
+      // Patron her şeyi yapabilir (kendini değiştirmek hariç veya diğer patronlar hariç)
       if (targetRole === 'Patron' && userId !== targetUserId) {
         return { success: false, error: 'Diğer patronların yetkilerini değiştiremezsiniz.' };
       }
