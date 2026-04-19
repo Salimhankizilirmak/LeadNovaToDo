@@ -35,6 +35,7 @@ interface Task {
   due_date: string | null;
   project_id: string;
   assignee_id: string | null;
+  created_by: string;
 }
 
 /* ── Props ──────────────────────────────────────────────────── */
@@ -93,7 +94,7 @@ export default function CreateTaskModal({
           priority: values.priority,
           project_id: projectId,
           assignee_id: values.assignee_id || null,
-          user_id: userId,
+          created_by: userId,
           status: 'todo',
         })
         .select('*')
