@@ -82,6 +82,7 @@ export default function TeamPage() {
       setLoading(true);
       try {
         const token = await getToken({ template: 'supabase' });
+        console.log("CLERK TOKEN DURUMU (Team):", token ? "Token Başarıyla Alındı ✓" : "TOKEN BOŞ! ❌");
         if (!token) throw new Error('Oturum anahtarı alınamadı.');
 
         const supabase = createClerkClient(token);

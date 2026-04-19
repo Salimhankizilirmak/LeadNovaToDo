@@ -97,6 +97,7 @@ export default function CreateProjectModal({
 
     try {
       const token = await getToken({ template: 'supabase' });
+      console.log("CLERK TOKEN DURUMU (Project):", token ? "Token Başarıyla Alındı ✓" : "TOKEN BOŞ! ❌");
       if (!token) throw new Error('Oturum anahtarı alınamadı.');
 
       const supabase = createClerkClient(token);
