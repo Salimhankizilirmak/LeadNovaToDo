@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import AIAssistantWidget from '@/components/ai/AIAssistantWidget';
+import UserSyncTrigger from '@/components/auth/UserSyncTrigger';
 import { X } from 'lucide-react';
 
 export default function DashboardLayout({

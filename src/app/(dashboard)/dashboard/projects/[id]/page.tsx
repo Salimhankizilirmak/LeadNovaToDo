@@ -63,18 +63,26 @@ export default function ProjectDetailPage() {
         }
         setProject(projData);
 
-        // 2. Fetch Organization Members (Join kaldırıldı - 400 Fix)
-        const { data: memberData } = await supabase
-          .from('org_members')
-          .select('user_id')
+        // 2. Fetch Organization Members via Profiles
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
           .eq('org_id', projData.org_id);
         
-        setMembers((memberData?.map(m => ({ id: m.user_id, display_name: `Kullanıcı (${m.user_id.substring(0, 5)})` })) as Member[]) || []);
+        if (!profileError && profileData) {
+          setMembers(profileData.map(p => ({
+            id: p.id,
+            full_name: p.full_name,
+            display_name: p.full_name,
+            role: p.role,
+            avatar_url: p.avatar_url
+          })));
+        }
 
-        // 3. Fetch Tasks without reach (Join kaldırıldı - 400 Fix)
+        // 3. Fetch Tasks with profile join for assignee
         const { data: taskData, error: taskError } = await supabase
           .from('tasks')
-          .select('*')
+          .select('*, assignee:profiles(full_name, avatar_url, role)')
           .eq('project_id', id)
           .order('created_at', { ascending: false });
 

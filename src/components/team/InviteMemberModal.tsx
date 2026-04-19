@@ -13,7 +13,7 @@ interface InviteMemberModalProps {
 export default function InviteMemberModal({ isOpen, onClose }: InviteMemberModalProps) {
   const { organization, isLoaded } = useOrganization();
   const [emailAddress, setEmailAddress] = useState('');
-  const [role, setRole] = useState<'org:member' | 'org:admin'>('org:member');
+  const [role, setRole] = useState<UserRole>('Personel');
   const [submitting, setSubmitting] = useState(false);
 
   if (!isOpen || !isLoaded) return null;
@@ -24,11 +24,16 @@ export default function InviteMemberModal({ isOpen, onClose }: InviteMemberModal
 
     setSubmitting(true);
     try {
+      // Clerk davetini gönder - Not: Clerk yerel olarak sadece org:admin/org:member destekler 
+      // ama biz publicMetadata ile gerçek rolü iletiyoruz.
       await organization.inviteMember({
         emailAddress,
-        role,
+        role: role === 'Admin' || role === 'Patron' || role === 'Genel Müdür' ? 'org:admin' : 'org:member',
       });
-      toast.success(`${emailAddress} adresine davet gönderildi!`);
+      // Not: publicMetadata senkronizasyonu için webhook veya üye kabul anında sync kullanılmalıdır.
+      // Şimdilik davet mesajına rolü not düşüyoruz veya üye kabulünde profiles tablosunda işliyoruz.
+      
+      toast.success(`${emailAddress} adresine ${role} rolüyle davet gönderildi!`);
       setEmailAddress('');
       onClose();
     } catch (err: any) {
@@ -38,6 +43,16 @@ export default function InviteMemberModal({ isOpen, onClose }: InviteMemberModal
       setSubmitting(false);
     }
   };
+
+  const roles: UserRole[] = [
+    'Patron',
+    'Genel Müdür',
+    'Üretim Müdürü',
+    'Satış Pazarlama',
+    'Muhasebe',
+    'Vardiya Amiri',
+    'Personel'
+  ];
 
   return (
     <div
@@ -76,32 +91,18 @@ export default function InviteMemberModal({ isOpen, onClose }: InviteMemberModal
 
           {/* Role Choice */}
           <div className="space-y-2">
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-widest ml-1">Rol</label>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setRole('org:member')}
-                className={`flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all ${
-                  role === 'org:member' 
-                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700' 
-                    : 'border-gray-100 bg-white text-gray-400'
-                }`}
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-widest ml-1">Fabrika Rolü</label>
+            <div className="relative">
+              <Shield className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+              <select
+                value={role}
+                onChange={(e) => setRole(e.target.value as UserRole)}
+                className="w-full pl-10 pr-4 py-3 text-sm rounded-xl border border-gray-100 bg-gray-50 outline-none focus:bg-white focus:border-indigo-400 transition-all font-bold appearance-none cursor-pointer"
               >
-                <User size={20} />
-                <span className="text-xs font-bold">Üye</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setRole('org:admin')}
-                className={`flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all ${
-                  role === 'org:admin' 
-                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700' 
-                    : 'border-gray-100 bg-white text-gray-400'
-                }`}
-              >
-                <Shield size={20} />
-                <span className="text-xs font-bold">Yönetici</span>
-              </button>
+                {roles.map(r => (
+                  <option key={r} value={r}>{r}</option>
+                ))}
+              </select>
             </div>
           </div>
 

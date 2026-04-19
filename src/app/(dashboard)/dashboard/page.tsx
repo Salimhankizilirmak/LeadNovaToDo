@@ -69,7 +69,7 @@ export default async function DashboardPage() {
   // Verileri çek (Organizasyon varsa organizasyona, yoksa kullanıcıya göre filtrele)
   const taskQuery = supabase
     .from('tasks')
-    .select('*, project:projects(name, color)')
+    .select('*, project:projects(name, color), assignee:profiles(full_name, avatar_url)')
     .eq('assignee_id', userId)
     .order('created_at', { ascending: false })
     .limit(5);

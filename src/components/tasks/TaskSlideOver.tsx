@@ -5,6 +5,7 @@ import { X, Calendar, Type, AlignLeft, Flag, Save, Trash2, Loader2, User as User
 import { toast } from 'sonner';
 import { useSupabase } from '@/hooks/use-supabase';
 import { Task, Member } from '@/types/task';
+import TaskAttachments from './TaskAttachments';
 
 /* ── Props ──────────────────────────────────────────────────── */
 interface TaskSlideOverProps {
@@ -222,6 +223,11 @@ export default function TaskSlideOver({
                   className="w-full text-xs font-bold p-3 border border-gray-100 rounded-xl bg-gray-50/50 focus:bg-white focus:border-indigo-400 transition-all outline-none"
                 />
               </div>
+            </div>
+
+            {/* Attachments Section */}
+            <div className="pt-4 border-t border-gray-50">
+               <TaskAttachments taskId={task.id} />
             </div>
           </div>
 

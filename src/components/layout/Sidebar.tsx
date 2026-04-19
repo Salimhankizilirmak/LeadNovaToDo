@@ -8,6 +8,7 @@ import {
   CalendarDays,
   Users,
   BarChart3,
+  Boxes,
   LogOut,
   Loader2,
 } from 'lucide-react';
@@ -17,6 +18,7 @@ const navItems = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Projeler', href: '/dashboard/projects', icon: FolderKanban },
   { name: 'Takvim', href: '/dashboard/calendar', icon: CalendarDays },
+  { name: 'Hücreler', href: '/dashboard/cells', icon: Boxes },
   { name: 'Ekip', href: '/dashboard/team', icon: Users },
   { name: 'Raporlar', href: '#', icon: BarChart3 },
 ];
