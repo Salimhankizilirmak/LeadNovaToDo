@@ -20,8 +20,8 @@ import CreateTaskModal from '@/components/tasks/CreateTaskModal';
 
 interface Member {
   id: string;
-  email: string;
-  display_name: string | null;
+  email?: string;
+  display_name?: string | null;
 }
 
 interface Project {
@@ -39,11 +39,6 @@ interface Task {
   priority: 'low' | 'medium' | 'high' | 'critical';
   due_date: string | null;
   assignee_id: string | null;
-  assignee?: {
-    id: string;
-    email: string;
-    display_name: string | null;
-  } | null;
 }
 
 export default function ProjectDetailPage() {
@@ -86,24 +81,18 @@ export default function ProjectDetailPage() {
         }
         setProject(projData);
 
-        // 2. Fetch Organization Members for Assignee selection
+        // 2. Fetch Organization Members (Join kaldırıldı - 400 Fix)
         const { data: memberData } = await supabase
           .from('org_members')
-          .select(`
-            user:user_id (
-              id,
-              email,
-              display_name
-            )
-          `)
+          .select('user_id')
           .eq('org_id', projData.org_id);
         
-        setMembers((memberData?.map(m => Array.isArray(m.user) ? m.user[0] : m.user) as Member[]) || []);
+        setMembers((memberData?.map(m => ({ id: m.user_id, display_name: `Kullanıcı (${m.user_id.substring(0, 5)})` })) as Member[]) || []);
 
-        // 3. Fetch Tasks with Assignee join
+        // 3. Fetch Tasks without reach (Join kaldırıldı - 400 Fix)
         const { data: taskData, error: taskError } = await supabase
           .from('tasks')
-          .select('*, assignee:assignee_id(id, email, display_name)')
+          .select('*')
           .eq('project_id', id)
           .order('created_at', { ascending: false });
 

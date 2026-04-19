@@ -19,11 +19,9 @@ import AddMemberModal from '@/components/team/AddMemberModal';
 interface TeamMember {
   user_id: string;
   role: 'admin' | 'member';
-  user: {
-    id: string;
-    email: string;
-    display_name: string | null;
-  };
+  // İleride Clerk ile eşleşecek alanlar
+  email?: string;
+  display_name?: string;
 }
 
 /* ── Yardımcı Bileşenler ────────────────────────────────────── */
@@ -102,24 +100,17 @@ export default function TeamPage() {
         setOrgId(currentMember.org_id);
         setCurrentUserRole(currentMember.role);
 
-        // 2. Tüm üyeleri ve user detaylarını çek (Join)
+        // 2. Tüm üyeleri çek (Join kaldırıldı - 400 Fix)
         const { data: memberList, error: listError } = await supabase
           .from('org_members')
-          .select(`
-            user_id,
-            role,
-            user:user_id (
-              id,
-              email,
-              display_name
-            )
-          `)
+          .select('user_id, role')
           .eq('org_id', currentMember.org_id);
 
         if (listError) throw listError;
         const formattedMembers = (memberList?.map(m => ({
           ...m,
-          user: Array.isArray(m.user) ? m.user[0] : m.user
+          email: `${m.user_id.substring(0, 8)}...`, // Geçici gösterim
+          display_name: `Kullanıcı (${m.user_id.substring(0, 5)})`
         })) as TeamMember[]) || [];
 
         setMembers(formattedMembers);
@@ -213,13 +204,13 @@ export default function TeamPage() {
               >
                 <div className="flex items-center gap-4 min-w-0">
                   <MemberAvatar 
-                    name={member.user.display_name} 
-                    email={member.user.email} 
+                    name={member.display_name} 
+                    email={member.email || member.user_id} 
                   />
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
                        <p className="text-sm font-bold text-gray-900 truncate">
-                         {member.user.display_name || member.user.email.split('@')[0]}
+                         {member.display_name || member.email?.split('@')[0] || member.user_id.substring(0, 8)}
                        </p>
                        {isMe && (
                          <span className="text-[10px] font-black bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded uppercase tracking-tighter">
@@ -229,7 +220,7 @@ export default function TeamPage() {
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-gray-400 font-medium truncate">
                        <Mail size={12} />
-                       {member.user.email}
+                       {member.email || member.user_id}
                     </div>
                   </div>
                 </div>

@@ -21,8 +21,8 @@ type FormValues = z.infer<typeof schema>;
 /* ── Tipler ─────────────────────────────────────────────────── */
 interface Member {
   id: string;
-  email: string;
-  display_name: string | null;
+  email?: string;
+  display_name?: string | null;
 }
 
 interface Task {
@@ -94,7 +94,7 @@ export default function CreateTaskModal({
           user_id: userId, // Clerk ID'si direkt kaydediliyor
           status: 'todo',
         })
-        .select('*, assignee:assignee_id(id, email, display_name)')
+        .select('*')
         .single();
 
       if (error) throw error;
@@ -197,7 +197,7 @@ export default function CreateTaskModal({
               <option value="">Atanmamış</option>
               {members.map((member) => (
                 <option key={member.id} value={member.id}>
-                  {member.display_name || member.email.split('@')[0]}
+                  {member.display_name || member.email?.split('@')[0] || `Kullanıcı (${member.id.substring(0, 5)})`}
                 </option>
               ))}
             </select>

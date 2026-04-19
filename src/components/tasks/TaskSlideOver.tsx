@@ -8,8 +8,8 @@ import { createClient } from '@/utils/supabase/client';
 /* ── Tipler ─────────────────────────────────────────────────── */
 interface Member {
   id: string;
-  email: string;
-  display_name: string | null;
+  email?: string;
+  display_name?: string | null;
 }
 
 interface Task {
@@ -20,7 +20,6 @@ interface Task {
   priority: 'low' | 'medium' | 'high' | 'critical';
   due_date: string | null;
   assignee_id: string | null;
-  assignee?: Member | null;
 }
 
 /* ── Props ──────────────────────────────────────────────────── */
@@ -70,7 +69,7 @@ export default function TaskSlideOver({
         .from('tasks')
         .update(payload)
         .eq('id', task.id)
-        .select('*, assignee:assignee_id(id, email, display_name)')
+        .select('*')
         .single();
 
       if (error) throw error;
@@ -92,7 +91,6 @@ export default function TaskSlideOver({
     onUpdated({ 
       ...task, 
       assignee_id: newId, 
-      assignee: selectedMember ? { id: selectedMember.id, email: selectedMember.email, display_name: selectedMember.display_name } : null 
     } as Task);
 
     // Persistent update
@@ -195,7 +193,7 @@ export default function TaskSlideOver({
                 <option value="">Atanmamış</option>
                 {members.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.display_name || m.email.split('@')[0]}
+                    {m.display_name || m.email?.split('@')[0] || m.id.substring(0, 8)}
                   </option>
                 ))}
               </select>
