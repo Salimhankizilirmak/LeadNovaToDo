@@ -252,6 +252,7 @@ export default function ProjectDetailPage() {
       {/* Modals & SlideOvers */}
       <CreateTaskModal
         projectId={id as string}
+        orgId={project?.org_id || ''}
         members={members}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}

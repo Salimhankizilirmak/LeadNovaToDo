@@ -36,11 +36,13 @@ interface Task {
   project_id: string;
   assignee_id: string | null;
   created_by: string;
+  org_id: string;
 }
 
 /* ── Props ──────────────────────────────────────────────────── */
 interface CreateTaskModalProps {
   projectId: string;
+  orgId: string;
   members: Member[];
   isOpen: boolean;
   onClose: () => void;
@@ -49,6 +51,7 @@ interface CreateTaskModalProps {
 
 export default function CreateTaskModal({
   projectId,
+  orgId,
   members,
   isOpen,
   onClose,
@@ -93,6 +96,7 @@ export default function CreateTaskModal({
           description: values.description || "", // Boş string garantisi (400 Hatası Fix)
           priority: values.priority,
           project_id: projectId,
+          org_id: orgId,
           assignee_id: values.assignee_id || null,
           created_by: userId,
           status: 'todo',

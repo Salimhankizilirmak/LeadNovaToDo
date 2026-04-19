@@ -56,7 +56,7 @@ function StatCard({
 
 /* ── Ana Sayfa (Server Component) ─────────────────────────── */
 export default async function DashboardPage() {
-  const { getToken, userId } = await auth();
+  const { getToken, userId, orgId } = await auth();
   const token = await getToken({ template: 'supabase' });
   const user = await currentUser();
 
@@ -66,7 +66,7 @@ export default async function DashboardPage() {
 
   const supabase = await createClerkClient(token);
 
-  // Verileri çek (Parallel Fetching)
+  // Verileri çek (Organizasyon bazlı filtreleme)
   const [
     { data: tasks },
     { data: projects },
@@ -74,21 +74,21 @@ export default async function DashboardPage() {
     supabase
       .from('tasks')
       .select('*, project:project_id(name, color)')
-      .eq('assignee_id', userId)
+      .eq('org_id', orgId)
       .order('created_at', { ascending: false })
       .limit(5),
     supabase
       .from('projects')
       .select('*')
-      .eq('created_by', userId)
+      .eq('org_id', orgId)
       .limit(3),
   ]);
 
-  // İstatistikleri hesapla (Gerçek veriden veya ayrı query'den)
+  // İstatistikleri hesapla (Organizasyonun tüm görevleri)
   const { data: allTasks } = await supabase
     .from('tasks')
     .select('status, priority')
-    .eq('assignee_id', userId);
+    .eq('org_id', orgId);
 
   const stats: DashboardStats = {
     total: allTasks?.length || 0,
