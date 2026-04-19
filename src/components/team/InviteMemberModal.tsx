@@ -11,6 +11,8 @@ interface InviteMemberModalProps {
   onClose: () => void;
 }
 
+import { inviteMemberWithRoleAction } from '@/app/actions/users';
+
 export default function InviteMemberModal({ isOpen, onClose }: InviteMemberModalProps) {
   const { organization, isLoaded } = useOrganization();
   const [emailAddress, setEmailAddress] = useState('');
@@ -25,21 +27,18 @@ export default function InviteMemberModal({ isOpen, onClose }: InviteMemberModal
 
     setSubmitting(true);
     try {
-      // Clerk davetini gönder - Not: Clerk yerel olarak sadece org:admin/org:member destekler 
-      // ama biz publicMetadata ile gerçek rolü iletiyoruz.
-      await organization.inviteMember({
-        emailAddress,
-        role: role === 'Admin' || role === 'Patron' || role === 'Genel Müdür' ? 'org:admin' : 'org:member',
-      });
-      // Not: publicMetadata senkronizasyonu için webhook veya üye kabul anında sync kullanılmalıdır.
-      // Şimdilik davet mesajına rolü not düşüyoruz veya üye kabulünde profiles tablosunda işliyoruz.
+      const result = await inviteMemberWithRoleAction(emailAddress, role);
+      
+      if (!result.success) {
+        throw new Error(result.error);
+      }
       
       toast.success(`${emailAddress} adresine ${role} rolüyle davet gönderildi!`);
       setEmailAddress('');
       onClose();
     } catch (err: any) {
-      console.error('Clerk Davet Hatası:', err);
-      toast.error(err.errors?.[0]?.message || 'Davet gönderilirken bir hata oluştu.');
+      console.error('Davet Hatası:', err);
+      toast.error(err.message || 'Davet gönderilirken bir hata oluştu.');
     } finally {
       setSubmitting(false);
     }

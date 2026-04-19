@@ -8,21 +8,34 @@ import {
   User, 
   Mail, 
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Loader2,
+  ChevronRight
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useUser, useOrganization } from '@clerk/nextjs';
 import { useSupabase } from '@/hooks/use-supabase';
 import InviteMemberModal from '@/components/team/InviteMemberModal';
+import { updateUserRoleAction } from '@/app/actions/users';
+import { UserRole } from '@/types/task';
 
 /* ── Tipler ─────────────────────────────────────────────────── */
 interface TeamMember {
   user_id: string;
-  role: 'admin' | 'member';
-  // İleride Clerk ile eşleşecek alanlar
+  role: UserRole;
   email?: string;
   display_name?: string;
 }
+
+const roles: UserRole[] = [
+  'Patron',
+  'Genel Müdür',
+  'Üretim Müdürü',
+  'Satış Pazarlama',
+  'Muhasebe',
+  'Vardiya Amiri',
+  'Personel'
+];
 
 /* ── Yardımcı Bileşenler ────────────────────────────────────── */
 function MemberAvatar({ name, email }: { name?: string | null; email: string }) {
@@ -70,44 +83,68 @@ export default function TeamPage() {
   const userId = user?.id ?? null;
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
-  const [orgId, setOrgId] = useState<string | null>(null);
+  const [updatingRoleId, setUpdatingRoleId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Mevcut kullanıcının endüstriyel rolü
+  const myIndustrialRole = user?.publicMetadata?.role as UserRole;
+  const canEditRoles = myIndustrialRole === 'Patron' || myIndustrialRole === 'Genel Müdür' || myIndustrialRole === 'Admin';
+
+  const fetchMembers = async () => {
+    if (!organization) return;
+    try {
+      const supabase = await getSupabase();
+      
+      // Tüm üyeleri profiles tablosundan çek (org_id üzerinden filtrele)
+      const { data: memberList, error: listError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('org_id', organization.id);
+
+      if (listError) throw listError;
+      
+      const formattedMembers = (memberList?.map(m => ({
+        user_id: m.id,
+        role: m.role || 'Personel',
+        email: m.email || '',
+        display_name: m.full_name || 'İsimsiz Üye'
+      })) as TeamMember[]) || [];
+
+      setMembers(formattedMembers);
+    } catch (err) {
+      console.error(err);
+      toast.error('Ekip listesi yüklenirken bir hata oluştu.');
+    }
+  };
 
   useEffect(() => {
     if (!userId || !organization) return;
 
-    const fetchOrgData = async () => {
+    const init = async () => {
       setLoading(true);
-      try {
-        const supabase = await getSupabase();
-        
-        setOrgId(organization.id);
-
-        // Tüm üyeleri profiles tablosundan çek (org_id üzerinden filtrele)
-        const { data: memberList, error: listError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('org_id', organization.id);
-
-        if (listError) throw listError;
-        
-        const formattedMembers = (memberList?.map(m => ({
-          user_id: m.id,
-          role: m.role || 'Üye',
-          email: m.email || '',
-          display_name: m.full_name || 'İsimsiz Üye'
-        })) as TeamMember[]) || [];
-
-        setMembers(formattedMembers);
-      } catch {
-        toast.error('Ekip listesi yüklenirken bir hata oluştu.');
-      } finally {
-        setLoading(false);
-      }
+      await fetchMembers();
+      setLoading(false);
     };
 
-    fetchOrgData();
+    init();
   }, [userId, organization, getSupabase]);
+
+  const handleUpdateRole = async (targetUserId: string, newRole: UserRole) => {
+    setUpdatingRoleId(targetUserId);
+    try {
+      const result = await updateUserRoleAction(targetUserId, newRole);
+      if (result.success) {
+        toast.success('Rol başarıyla güncellendi.');
+        await fetchMembers();
+      } else {
+        toast.error(result.error || 'Rol güncellenirken hata oluştu.');
+      }
+    } catch (err) {
+      toast.error('Beklenmedik bir hata oluştu.');
+    } finally {
+      setUpdatingRoleId(null);
+    }
+  };
 
   const handleRemoveMember = async (targetUserId: string) => {
     toast.info('Üye çıkarma işlemi Clerk arayüzü üzerinden yapılmalıdır.', {
@@ -117,7 +154,7 @@ export default function TeamPage() {
 
   if (loading) return <TeamSkeleton />;
 
-  const isAdmin = membership?.role === 'org:admin';
+  const isAdmin = membership?.role === 'org:admin' || canEditRoles;
 
   return (
     <div className="space-y-6">
@@ -186,15 +223,39 @@ export default function TeamPage() {
                 </div>
 
                 <div className="flex items-center justify-between sm:justify-end gap-6 sm:pl-4">
-                  {/* Role Badge */}
-                  <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider ${
-                    member.role === 'admin' 
-                      ? 'bg-amber-50 text-amber-600 border border-amber-100' 
-                      : 'bg-blue-50 text-blue-600 border border-blue-100'
-                  }`}>
-                    {member.role === 'admin' ? <Shield size={12} /> : <User size={12} />}
-                    {member.role}
-                  </div>
+                  {/* Role Selector or Badge */}
+                  {canEditRoles && !isMe ? (
+                    <div className="relative">
+                      <select
+                        disabled={updatingRoleId === member.user_id}
+                        value={member.role}
+                        onChange={(e) => handleUpdateRole(member.user_id, e.target.value as UserRole)}
+                        className={`flex items-center gap-1.5 pl-3 pr-8 py-1.5 rounded-xl text-[11px] font-black uppercase tracking-wider border outline-none cursor-pointer transition-all appearance-none ${
+                          updatingRoleId === member.user_id ? 'opacity-50' : ''
+                        } ${
+                          member.role === 'Patron' || member.role === 'Admin' || member.role === 'Genel Müdür'
+                            ? 'bg-amber-50 text-amber-600 border-amber-100' 
+                            : 'bg-blue-50 text-blue-600 border-blue-100'
+                        }`}
+                      >
+                        {roles.map(r => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-current opacity-50">
+                        {updatingRoleId === member.user_id ? <Loader2 size={12} className="animate-spin" /> : <ChevronRight size={12} className="rotate-90" />}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider ${
+                      member.role === 'Patron' || member.role === 'Admin' || member.role === 'Genel Müdür'
+                        ? 'bg-amber-50 text-amber-600 border border-amber-100' 
+                        : 'bg-blue-50 text-blue-600 border border-blue-100'
+                    }`}>
+                      {member.role === 'Patron' || member.role === 'Admin' ? <Shield size={12} /> : <User size={12} />}
+                      {member.role}
+                    </div>
+                  )}
 
                   {/* Delete Button (Only for Admins, and not for themselves) */}
                   {isAdmin && !isMe ? (
