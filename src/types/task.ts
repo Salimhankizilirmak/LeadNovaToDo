@@ -15,5 +15,7 @@ export interface Task {
   assignee_id: string | null;
   created_by: string;
   org_id: string;
+  created_at: string;
+  updated_at: string;
   assignee?: Member | null; // Join verisi için opsiyonel
 }
