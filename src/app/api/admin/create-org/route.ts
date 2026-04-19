@@ -31,7 +31,6 @@ export async function POST(req: Request) {
     // 3. Şirketi (Organization) oluştur
     const organization = await client.organizations.createOrganization({
       name: organizationName,
-      slug: organizationName.toLowerCase().replace(/\s+/g, '-'),
     });
 
     // 4. Patrona Davetiye (Invitation) gönder
