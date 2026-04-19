@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     await client.organizations.createOrganizationInvitation({
       organizationId: organization.id,
       emailAddress: bossEmail,
-      role: 'admin',
+      role: 'org:admin',
       inviterUserId: userId,
     });
 
