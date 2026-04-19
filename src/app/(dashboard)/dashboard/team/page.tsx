@@ -74,38 +74,28 @@ export default function TeamPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !organization) return;
 
     const fetchOrgData = async () => {
       setLoading(true);
       try {
         const supabase = await getSupabase();
         
-        // 1. Organizasyonu ve kendi rolünü bul
-        const { data: currentMember, error: orgError } = await supabase
-          .from('org_members')
-          .select('org_id, role')
-          .eq('user_id', userId)
-          .single();
+        setOrgId(organization.id);
 
-        if (orgError || !currentMember) {
-          toast.error('Organizasyon verisi bulunamadı.');
-          return;
-        }
-
-        setOrgId(currentMember.org_id);
-
-        // 2. Tüm üyeleri çek
+        // Tüm üyeleri profiles tablosundan çek (org_id üzerinden filtrele)
         const { data: memberList, error: listError } = await supabase
-          .from('org_members')
-          .select('user_id, role')
-          .eq('org_id', currentMember.org_id);
+          .from('profiles')
+          .select('*')
+          .eq('org_id', organization.id);
 
         if (listError) throw listError;
+        
         const formattedMembers = (memberList?.map(m => ({
-          ...m,
-          email: `${m.user_id.substring(0, 8)}...`, // Geçici gösterim
-          display_name: `Kullanıcı (${m.user_id.substring(0, 5)})`
+          user_id: m.id,
+          role: m.role || 'Üye',
+          email: m.email || '',
+          display_name: m.full_name || 'İsimsiz Üye'
         })) as TeamMember[]) || [];
 
         setMembers(formattedMembers);
@@ -117,34 +107,12 @@ export default function TeamPage() {
     };
 
     fetchOrgData();
-  }, [userId, getSupabase]);
+  }, [userId, organization, getSupabase]);
 
   const handleRemoveMember = async (targetUserId: string) => {
-    if (!orgId) return;
-    if (targetUserId === userId) {
-      toast.error('Kendinizi ekipten çıkaramazsınız.');
-      return;
-    }
-
-    const previousMembers = [...members];
-    
-    // Optimistic Update
-    setMembers(members.filter(m => m.user_id !== targetUserId));
-    
-    try {
-      const supabase = await getSupabase();
-      const { error } = await supabase
-        .from('org_members')
-        .delete()
-        .eq('org_id', orgId)
-        .eq('user_id', targetUserId);
-
-      if (error) throw error;
-      toast.success('Üye başarıyla çıkarıldı.');
-    } catch {
-      setMembers(previousMembers);
-      toast.error('Üye çıkarılırken bir hata oluştu.');
-    }
+    toast.info('Üye çıkarma işlemi Clerk arayüzü üzerinden yapılmalıdır.', {
+      description: 'Lütfen Clerk Organizasyon paneline gidin.'
+    });
   };
 
   if (loading) return <TeamSkeleton />;
