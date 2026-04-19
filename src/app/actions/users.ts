@@ -40,10 +40,34 @@ export async function syncProfile() {
       }
     }
 
-    const role = (user.publicMetadata?.role as UserRole) || 'Personel';
+    // 4. Mevcut Profili Sorgula (Rol Koruması İçin)
+    const { data: existingProfile } = await supabase
+      .from('profiles')
+      .select('role, org_id')
+      .eq('id', userId)
+      .maybeSingle();
+
+    // 5. Rol Belirleme Mantığı (Hiyerarşi: Clerk Metadata > Mevcut DB > Varsayılan)
+    let finalRole: UserRole = (user.publicMetadata?.role as UserRole);
+    
+    if (!finalRole) {
+      if (existingProfile?.role) {
+        finalRole = existingProfile.role as UserRole;
+        console.log('[Sync] Mevcut DB rolü korunuyor:', finalRole);
+      } else {
+        finalRole = 'Personel';
+        console.log('[Sync] Yeni kullanıcı için varsayılan rol atanıyor: Personel');
+      }
+    } else {
+      console.log('[Sync] Clerk Metadata rolü uygulanıyor:', finalRole);
+    }
+
+    // 6. Organizasyon ID Belirleme (Hiyerarşi: Oturum > Mevcut DB > Clerk API)
+    let finalOrgId = targetOrgId || existingProfile?.org_id;
+
     const full_name = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.emailAddresses[0]?.emailAddress || 'Kullanıcı';
 
-    console.log('[Sync] Veritabanı işlemi başlatılıyor...', { userId, targetOrgId, role });
+    console.log('[Sync] Veritabanı işlemi başlatılıyor...', { userId, finalOrgId, finalRole });
 
     const { data, error } = await supabase
       .from('profiles')
@@ -52,8 +76,8 @@ export async function syncProfile() {
         full_name,
         email: user.emailAddresses[0]?.emailAddress || '',
         avatar_url: user.imageUrl,
-        role: role,
-        org_id: targetOrgId || null,
+        role: finalRole,
+        org_id: finalOrgId || null,
         updated_at: new Date().toISOString()
       }, { onConflict: 'id' })
       .select()
@@ -64,7 +88,7 @@ export async function syncProfile() {
       throw error;
     }
 
-    console.log('[Sync] Başarılı! Profil oluşturuldu/güncellendi:', data.id);
+    console.log('[Sync] Başarılı! Profil güncellendi. Rol:', data.role, 'Org:', data.org_id);
     return { success: true, profile: data };
   } catch (err: any) {
     console.error('PROFIL SENKRONIZASYON HATASI:', err);
