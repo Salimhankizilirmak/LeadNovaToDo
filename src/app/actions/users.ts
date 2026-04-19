@@ -180,18 +180,23 @@ export async function updateUserRoleAction(targetUserId: string, newRole: UserRo
       publicMetadata: { role: newRole }
     });
 
-    // 2. Supabase Profiles Güncelleme
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    const { error: sbError } = await supabase
+    // 2. Supabase Profiles Güncelleme (Yetkili istemci ile!)
+    console.log('[Auth] Supabase profil güncellemesi başlatılıyor...', { targetUserId, newRole });
+    
+    const { error: sbError } = await supabaseAuthorised
       .from('profiles')
-      .update({ role: newRole })
+      .update({ 
+        role: newRole,
+        updated_at: new Date().toISOString()
+      })
       .eq('id', targetUserId);
 
-    if (sbError) throw sbError;
+    if (sbError) {
+      console.error('[Auth] Supabase Güncelleme Hatası:', sbError);
+      throw sbError;
+    }
 
+    console.log('[Auth] Başarılı! Rol güncellendi.');
     return { success: true };
   } catch (err: any) {
     console.error('UPDATE ROLE ACTION ERROR:', err);
