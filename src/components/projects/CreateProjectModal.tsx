@@ -6,8 +6,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { X, Loader2, FolderPlus } from 'lucide-react';
-import { createClient } from '@/utils/supabase/client';
-import { useUserStore } from '@/store/useUserStore';
+import { createClerkClient } from '@/utils/supabase/client';
+import { useUser, useAuth } from '@clerk/nextjs';
 
 /* ── Tipler ─────────────────────────────────────────────────── */
 export interface Project {
@@ -38,8 +38,8 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 /* ── Organizasyon Yardımcısı ────────────────────────────────── */
-async function ensureOrgId(userId: string): Promise<string> {
-  const supabase = createClient();
+async function ensureOrgId(userId: string, token: string): Promise<string> {
+  const supabase = createClerkClient(token);
 
   // Kullanıcının mevcut organizasyonunu bul
   const { data: memberRow } = await supabase
@@ -79,7 +79,9 @@ export default function CreateProjectModal({
   onClose,
   onCreated,
 }: CreateProjectModalProps) {
-  const user = useUserStore((s) => s.user);
+  const { user } = useUser();
+  const { getToken } = useAuth();
+  const userId = user?.id ?? null;
   const [selectedColor, setSelectedColor] = useState(COLOR_OPTIONS[0].hex);
   const [submitting, setSubmitting] = useState(false);
 
@@ -90,12 +92,15 @@ export default function CreateProjectModal({
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
   const onSubmit = async (values: FormValues) => {
-    if (!user) return;
+    if (!userId) return;
     setSubmitting(true);
 
     try {
-      const supabase = createClient();
-      const orgId = await ensureOrgId(user.id);
+      const token = await getToken({ template: 'supabase' });
+      if (!token) throw new Error('Oturum anahtarı alınamadı.');
+
+      const supabase = createClerkClient(token);
+      const orgId = await ensureOrgId(userId, token);
 
       const { data, error } = await supabase
         .from('projects')
@@ -104,7 +109,7 @@ export default function CreateProjectModal({
           description: values.description ?? null,
           color: selectedColor,
           org_id: orgId,
-          created_by: user.id,
+          created_by: userId,
           status: 'active',
         })
         .select('id, name, description, color, status, org_id, created_by, created_at')

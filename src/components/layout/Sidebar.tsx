@@ -11,33 +11,23 @@ import {
   LogOut,
   Loader2,
 } from 'lucide-react';
-import { useUserStore } from '@/store/useUserStore';
-import { createClient } from '@/utils/supabase/client';
-import { toast } from 'sonner';
+import { useUser, useClerk } from '@clerk/nextjs';
 
 const navItems = [
-  { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { name: 'Projeler', href: '/projects', icon: FolderKanban },
-  { name: 'Takvim', href: '/calendar', icon: CalendarDays },
-  { name: 'Ekip', href: '/team', icon: Users },
-  { name: 'Raporlar', href: '/reports', icon: BarChart3 },
+  { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { name: 'Projeler', href: '/dashboard/projects', icon: FolderKanban },
+  { name: 'Takvim', href: '/dashboard/calendar', icon: CalendarDays },
+  { name: 'Ekip', href: '/dashboard/team', icon: Users },
+  { name: 'Raporlar', href: '/dashboard/reports', icon: BarChart3 },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const user = useUserStore((state) => state.user);
-  const setUser = useUserStore((state) => state.setUser);
+  const { user, isLoaded } = useUser();
+  const { signOut } = useClerk();
 
   const handleLogout = async () => {
-    try {
-      const supabase = createClient();
-      await supabase.auth.signOut();
-      setUser(null);
-      toast.success('Başarıyla çıkış yapıldı');
-      window.location.href = '/login';
-    } catch {
-      toast.error('Çıkış yapılırken bir hata oluştu');
-    }
+    await signOut({ redirectUrl: '/' });
   };
 
   return (
@@ -89,14 +79,18 @@ export default function Sidebar() {
         <div className="flex flex-col gap-4">
           <div className="px-3 py-2 rounded-xl bg-gray-50 flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-semibold text-xs shrink-0">
-              {user?.email?.[0].toUpperCase() || '?'}
+              {isLoaded
+                ? (user?.firstName?.[0] ?? user?.emailAddresses?.[0]?.emailAddress?.[0] ?? '?').toUpperCase()
+                : '?'}
             </div>
             <div className="min-w-0">
               <p className="text-xs font-semibold text-gray-900 truncate">
-                {user ? user.email : (
-                   <span className="flex items-center gap-1">
-                     <Loader2 size={12} className="animate-spin" /> Yükleniyor...
-                   </span>
+                {!isLoaded ? (
+                  <span className="flex items-center gap-1">
+                    <Loader2 size={12} className="animate-spin" /> Yükleniyor...
+                  </span>
+                ) : (
+                  user?.firstName ?? user?.emailAddresses?.[0]?.emailAddress ?? 'Kullanıcı'
                 )}
               </p>
               <p className="text-[10px] text-gray-500 truncate">Sistem Yöneticisi</p>

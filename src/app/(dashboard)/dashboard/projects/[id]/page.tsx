@@ -11,7 +11,8 @@ import {
   Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { createClient } from '@/utils/supabase/client';
+import { createClerkClient } from '@/utils/supabase/client';
+import { useAuth } from '@clerk/nextjs';
 import TaskBoard from '@/components/tasks/TaskBoard';
 import TaskList from '@/components/tasks/TaskList';
 import TaskSlideOver from '@/components/tasks/TaskSlideOver';
@@ -48,6 +49,7 @@ interface Task {
 export default function ProjectDetailPage() {
   const { id } = useParams();
   const router = useRouter();
+  const { getToken } = useAuth();
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -65,7 +67,10 @@ export default function ProjectDetailPage() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const supabase = createClient();
+        const token = await getToken({ template: 'supabase' });
+        if (!token) throw new Error('Oturum anahtarı alınamadı.');
+
+        const supabase = createClerkClient(token);
         
         // 1. Fetch Project
         const { data: projData, error: projError } = await supabase
@@ -76,7 +81,7 @@ export default function ProjectDetailPage() {
 
         if (projError || !projData) {
           toast.error('Proje bulunamadı.');
-          router.push('/projects');
+          router.push('/dashboard/projects');
           return;
         }
         setProject(projData);
@@ -123,7 +128,10 @@ export default function ProjectDetailPage() {
     setTasks(tasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
 
     try {
-      const supabase = createClient();
+      const token = await getToken({ template: 'supabase' });
+      if (!token) throw new Error('Oturum anahtarı bulunamadı.');
+
+      const supabase = createClerkClient(token);
       const { error } = await supabase
         .from('tasks')
         .update({ status: newStatus })
@@ -166,7 +174,7 @@ export default function ProjectDetailPage() {
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-gray-400 text-xs font-bold uppercase tracking-widest">
             <button 
-              onClick={() => router.push('/projects')}
+              onClick={() => router.push('/dashboard/projects')}
               className="hover:text-indigo-600 transition-colors"
             >
               Projeler

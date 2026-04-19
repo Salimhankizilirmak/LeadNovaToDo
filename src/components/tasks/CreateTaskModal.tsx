@@ -6,8 +6,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { X, Loader2, ClipboardCheck } from 'lucide-react';
-import { createClient } from '@/utils/supabase/client';
-import { useUserStore } from '@/store/useUserStore';
+import { createClerkClient } from '@/utils/supabase/client';
+import { useUser, useAuth } from '@clerk/nextjs';
 
 /* ── Zod Şeması ─────────────────────────────────────────────── */
 const schema = z.object({
@@ -53,7 +53,10 @@ export default function CreateTaskModal({
   onClose,
   onCreated,
 }: CreateTaskModalProps) {
-  const user = useUserStore((s) => s.user);
+  // TODO Sprint 2: Clerk userId → Supabase user_id mapping eklenecek
+  const { user } = useUser();
+  const { getToken } = useAuth();
+  const userId = user?.id ?? null;
   const [submitting, setSubmitting] = useState(false);
 
   const {
@@ -71,11 +74,14 @@ export default function CreateTaskModal({
   if (!isOpen) return null;
 
   const onSubmit = async (values: FormValues) => {
-    if (!user) return;
+    if (!userId) return;
     setSubmitting(true);
 
     try {
-      const supabase = createClient();
+      const token = await getToken({ template: 'supabase' });
+      if (!token) throw new Error('Oturum anahtarı alınamadı.');
+      
+      const supabase = createClerkClient(token);
       
       const { data, error } = await supabase
         .from('tasks')
@@ -84,6 +90,7 @@ export default function CreateTaskModal({
           priority: values.priority,
           project_id: projectId,
           assignee_id: values.assignee_id || null,
+          user_id: userId, // Clerk ID'si direkt kaydediliyor
           status: 'todo',
         })
         .select('*, assignee:assignee_id(id, email, display_name)')

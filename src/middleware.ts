@@ -1,75 +1,38 @@
-import { createServerClient } from '@supabase/ssr';
-import { NextResponse, type NextRequest } from 'next/server';
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 
 /**
- * Supabase session'ını cookie'lerden okuyarak günceller ve
- * yetkisiz kullanıcıları /login'e yönlendirir.
- *
- * Sonsuz yönlendirme (infinite redirect) riskini önlemek için:
- * - /login sayfası hiçbir zaman korumalı rota olarak değerlendirilmez.
- * - Matcher, _next/, api/, public statik dosyaları otomatik hariç tutar.
+ * Korumalı rotalar — giriş yapılmamışsa Clerk otomatik olarak
+ * /sign-in adresine yönlendirir.
  */
-export async function middleware(request: NextRequest) {
-  // Çevre değişkenleri eksikse /login'e yönlendir (geliştirme ortamı güvenliği)
-  if (!SUPABASE_URL || !SUPABASE_KEY) {
-    const { pathname } = request.nextUrl;
-    if (pathname !== '/login') {
-      const loginUrl = request.nextUrl.clone();
-      loginUrl.pathname = '/login';
-      return NextResponse.redirect(loginUrl);
+const isProtectedRoute = createRouteMatcher([
+  '/dashboard(.*)',
+  '/api(.*)',
+]);
+
+const isAdminRoute = createRouteMatcher([
+  '/admin(.*)',
+]);
+
+export default clerkMiddleware(async (auth, req) => {
+  const { userId, sessionClaims } = await auth();
+  const userEmail = (sessionClaims?.email as string) || "";
+  
+  // Süper Admin Listesini Al
+  const superAdmins = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAILS?.split(',') || [];
+  const isSuperAdmin = superAdmins.includes(userEmail);
+
+  // 1. Admin Rotası Kontrolü
+  if (isAdminRoute(req)) {
+    if (!userId || !isSuperAdmin) {
+      return Response.redirect(new URL('/', req.url));
     }
-    return NextResponse.next({ request });
   }
 
-  let supabaseResponse = NextResponse.next({ request });
-
-  const supabase = createServerClient(
-    SUPABASE_URL!,
-    SUPABASE_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
-          supabaseResponse = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          );
-        },
-      },
-    }
-  );
-
-  // Session yenileme — bu satır kritik, değiştirilmemeli
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const { pathname } = request.nextUrl;
-
-  // Yetkisiz kullanıcıyı /login'e yönlendir
-  if (!user && pathname !== '/login') {
-    const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = '/login';
-    return NextResponse.redirect(loginUrl);
+  // 2. Genel Korumalı Rotalar
+  if (isProtectedRoute(req)) {
+    await auth.protect();
   }
-
-  // Yetkili kullanıcı /login'e gelirse ana sayfaya yönlendir
-  if (user && pathname === '/login') {
-    const homeUrl = request.nextUrl.clone();
-    homeUrl.pathname = '/';
-    return NextResponse.redirect(homeUrl);
-  }
-
-  return supabaseResponse;
-}
+});
 
 export const config = {
   matcher: [
@@ -80,5 +43,7 @@ export const config = {
      * - favicon.ico, robots.txt, sitemap.xml vb.
      */
     '/((?!_next/static|_next/image|favicon\\.ico|robots\\.txt|sitemap\\.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/(api|trpc)(.*)',
   ],
 };
+

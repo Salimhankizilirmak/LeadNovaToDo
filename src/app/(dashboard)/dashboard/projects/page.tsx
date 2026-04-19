@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, FolderOpen } from 'lucide-react';
 import { toast } from 'sonner';
-import { createClient } from '@/utils/supabase/client';
-import { useUserStore } from '@/store/useUserStore';
+import { createClerkClient } from '@/utils/supabase/client';
+import { useUser, useAuth } from '@clerk/nextjs';
 import CreateProjectModal, {
   type Project,
 } from '@/components/projects/CreateProjectModal';
@@ -96,24 +96,29 @@ function ProjectCard({
 /* ── Ana Sayfa ───────────────────────────────────────────── */
 export default function ProjectsPage() {
   const router = useRouter();
-  const user = useUserStore((s) => s.user);
+  const { user, isLoaded } = useUser();
+  const { getToken } = useAuth();
+  const userId = user?.id ?? null;
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
 
     const fetchProjects = async () => {
       setLoading(true);
       try {
-        const supabase = createClient();
+        const token = await getToken({ template: 'supabase' });
+        if (!token) throw new Error('Oturum anahtarı alınamadı.');
 
+        const supabase = createClerkClient(token);
+        
         // Kullanıcının org_id'sini bul
         const { data: memberRow } = await supabase
           .from('org_members')
           .select('org_id')
-          .eq('user_id', user.id)
+          .eq('user_id', userId)
           .limit(1)
           .single();
 
@@ -140,7 +145,7 @@ export default function ProjectsPage() {
     };
 
     fetchProjects();
-  }, [user]);
+  }, [userId]);
 
   const handleProjectCreated = (newProject: Project) => {
     setProjects((prev) => [newProject, ...prev]);
@@ -202,7 +207,7 @@ export default function ProjectsPage() {
               <ProjectCard
                 key={project.id}
                 project={project}
-                onClick={() => router.push(`/projects/${project.id}`)}
+                onClick={() => router.push(`/dashboard/projects/${project.id}`)}
               />
             ))}
           </div>

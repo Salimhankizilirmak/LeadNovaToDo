@@ -1,6 +1,7 @@
 'use client';
 
 import { Bell, Menu } from 'lucide-react';
+import { UserButton, OrganizationSwitcher } from '@clerk/nextjs';
 
 interface TopbarProps {
   onMenuClick: () => void;
@@ -22,12 +23,24 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
         </h2>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
         <button className="p-2 text-gray-400 hover:bg-gray-50 hover:text-gray-600 rounded-lg transition-all relative">
           <Bell size={20} />
           <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
         </button>
+        <div className="flex items-center gap-2 pl-2 border-l border-gray-100">
+          <OrganizationSwitcher 
+            hidePersonal={true} 
+            appearance={{
+              elements: {
+                organizationSwitcherTrigger: "hover:bg-gray-50 px-2 py-1 rounded-lg transition-colors",
+              }
+            }}
+          />
+          <UserButton />
+        </div>
       </div>
     </header>
   );
 }
+

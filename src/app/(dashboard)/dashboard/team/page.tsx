@@ -11,8 +11,8 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { createClient } from '@/utils/supabase/client';
-import { useUserStore } from '@/store/useUserStore';
+import { createClerkClient } from '@/utils/supabase/client';
+import { useUser, useAuth } from '@clerk/nextjs';
 import AddMemberModal from '@/components/team/AddMemberModal';
 
 /* ── Tipler ─────────────────────────────────────────────────── */
@@ -66,7 +66,9 @@ function TeamSkeleton() {
 
 /* ── Ana Sayfa ───────────────────────────────────────────── */
 export default function TeamPage() {
-  const currentUser = useUserStore((s) => s.user);
+  const { user, isLoaded: isUserLoaded } = useUser();
+  const { getToken } = useAuth();
+  const userId = user?.id ?? null;
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [orgId, setOrgId] = useState<string | null>(null);
@@ -74,18 +76,21 @@ export default function TeamPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
-    if (!currentUser) return;
+    if (!userId) return;
 
     const fetchOrgData = async () => {
       setLoading(true);
       try {
-        const supabase = createClient();
+        const token = await getToken({ template: 'supabase' });
+        if (!token) throw new Error('Oturum anahtarı alınamadı.');
+
+        const supabase = createClerkClient(token);
         
         // 1. Organizasyonu ve kendi rolünü bul
         const { data: currentMember, error: orgError } = await supabase
           .from('org_members')
           .select('org_id, role')
-          .eq('user_id', currentUser.id)
+          .eq('user_id', userId)
           .single();
 
         if (orgError || !currentMember) {
@@ -125,11 +130,11 @@ export default function TeamPage() {
     };
 
     fetchOrgData();
-  }, [currentUser]);
+  }, [userId]);
 
-  const handleRemoveMember = async (userId: string) => {
+  const handleRemoveMember = async (targetUserId: string) => {
     if (!orgId) return;
-    if (userId === currentUser?.id) {
+    if (targetUserId === userId) {
       toast.error('Kendinizi ekipten çıkaramazsınız.');
       return;
     }
@@ -137,15 +142,18 @@ export default function TeamPage() {
     const previousMembers = [...members];
     
     // Optimistic Update
-    setMembers(members.filter(m => m.user_id !== userId));
+    setMembers(members.filter(m => m.user_id !== targetUserId));
     
     try {
-      const supabase = createClient();
+      const token = await getToken({ template: 'supabase' });
+      if (!token) throw new Error('Oturum anahtarı bulunamadı.');
+
+      const supabase = createClerkClient(token);
       const { error } = await supabase
         .from('org_members')
         .delete()
         .eq('org_id', orgId)
-        .eq('user_id', userId);
+        .eq('user_id', targetUserId);
 
       if (error) throw error;
       toast.success('Üye başarıyla çıkarıldı.');
@@ -195,7 +203,7 @@ export default function TeamPage() {
 
         <ul className="divide-y divide-gray-50">
           {members.map((member) => {
-            const isMe = member.user_id === currentUser?.id;
+            const isMe = member.user_id === userId;
             
             return (
               <li 
