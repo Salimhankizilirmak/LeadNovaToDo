@@ -19,15 +19,37 @@ export async function syncProfile() {
 
     // 1. Organizasyon Bilgisini Garantile
     let targetOrgId = orgId;
+    const clerk = await getClerkClient();
     
     if (!targetOrgId) {
-      const clerk = await getClerkClient();
       console.log('[Sync] OrgID oturumda yok, Clerk üyelerinden sorgulanıyor...');
       const memberships = await clerk.users.getOrganizationMembershipList({ userId });
       
       if (memberships.data && memberships.data.length > 0) {
         targetOrgId = memberships.data[0].organization.id;
         console.log('[Sync] Kullanıcının üye olduğu organizasyon bulundu:', targetOrgId);
+      }
+    }
+
+    // 1a. Organizations Tablosunu Önceden Besle (FK Kalkanı)
+    if (targetOrgId) {
+      console.log('[Sync] Organizasyon detayları Clerk\'ten çekiliyor...', targetOrgId);
+      try {
+        const orgDetail = await clerk.organizations.getOrganization({ organizationId: targetOrgId });
+        await db.insert(organizations).values({
+          id: targetOrgId,
+          name: orgDetail.name,
+          ownerId: orgDetail.createdBy || userId // Sahibi yoksa mevcut kullanıcıyı ata
+        }).onConflictDoUpdate({
+          target: organizations.id,
+          set: {
+            name: orgDetail.name,
+            ownerId: orgDetail.createdBy || userId
+          }
+        });
+        console.log('[Sync] Organizations tablosu güncellendi.');
+      } catch (orgErr) {
+        console.error('[Sync] Organizations upsert hatası (Kritik değil ama FK bozabilir):', orgErr);
       }
     }
 
@@ -53,7 +75,7 @@ export async function syncProfile() {
 
     console.log('[Sync] Drizzle Upsert işlemi başlatılıyor...', { userId, finalOrgId, finalRole });
 
-    // 5. Drizzle Upsert
+    // 5. Drizzle Profiles Upsert
     const [updatedProfile] = await db.insert(profiles).values({
       id: userId,
       fullName: full_name,
@@ -76,19 +98,32 @@ export async function syncProfile() {
 
     console.log('[Sync] Başarılı! Profil güncellendi. Rol:', updatedProfile.role, 'Org:', updatedProfile.orgId);
 
-    // 6. Organizasyon Bağını Garantile (Multi-tenant Sync)
+    // 6. Organizasyon Bağını Garantile (Multi-tenant Sync - Manuel Upsert)
     if (finalOrgId) {
-      console.log('[Sync] OrgMembers bağı kuruluyor/güncelleniyor...', { userId, finalOrgId });
-      await db.insert(orgMembers).values({
-        orgId: finalOrgId,
-        userId: userId,
-        role: updatedProfile.role || 'member'
-      }).onConflictDoUpdate({
-        target: [orgMembers.orgId, orgMembers.userId],
-        set: {
-          role: updatedProfile.role || 'member'
-        }
+      console.log('[Sync] OrgMembers bağı kontrol ediliyor...', { userId, finalOrgId });
+      
+      const existingMember = await db.query.orgMembers.findFirst({
+        where: and(
+          eq(orgMembers.orgId, finalOrgId),
+          eq(orgMembers.userId, userId)
+        )
       });
+
+      if (existingMember) {
+        await db.update(orgMembers)
+          .set({ role: updatedProfile.role || 'member' })
+          .where(and(
+            eq(orgMembers.orgId, finalOrgId),
+            eq(orgMembers.userId, userId)
+          ));
+      } else {
+        await db.insert(orgMembers).values({
+          orgId: finalOrgId,
+          userId: userId,
+          role: updatedProfile.role || 'member'
+        });
+      }
+      console.log('[Sync] OrgMembers bağı başarıyla kuruldu/güncellendi.');
     }
 
     return { success: true, profile: updatedProfile };
