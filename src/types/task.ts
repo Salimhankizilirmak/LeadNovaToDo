@@ -18,4 +18,5 @@ export interface Task {
   created_at: string;
   updated_at: string;
   assignee?: Member | null; // Join verisi için opsiyonel
+  project?: { name: string; color: string } | null;
 }
