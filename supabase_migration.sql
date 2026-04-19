@@ -17,7 +17,7 @@ DROP POLICY IF EXISTS "Users can see their own memberships" ON public.org_member
 CREATE POLICY "Users can see their own memberships"
 ON public.org_members FOR SELECT
 TO authenticated
-USING (auth.uid() = user_id);
+USING (public.requesting_user_id() = user_id);
 
 -- ORGANIZATIONS: Organizasyon üyeleri kendi şirket verilerini görebilmeli
 DROP POLICY IF EXISTS "Members can see their organization" ON public.organizations;
@@ -25,7 +25,7 @@ CREATE POLICY "Members can see their organization"
 ON public.organizations FOR SELECT
 TO authenticated
 USING (
-  id IN (SELECT org_id FROM public.org_members WHERE user_id = auth.uid())
+  id IN (SELECT org_id FROM public.org_members WHERE user_id = public.requesting_user_id())
 );
 
 -- PROJECTS: Organizasyon üyeleri projeleri görebilir ve oluşturabilir
@@ -34,7 +34,7 @@ CREATE POLICY "Members can see projects"
 ON public.projects FOR SELECT
 TO authenticated
 USING (
-  org_id IN (SELECT org_id FROM public.org_members WHERE user_id = auth.uid())
+  org_id IN (SELECT org_id FROM public.org_members WHERE user_id = public.requesting_user_id())
 );
 
 DROP POLICY IF EXISTS "Members can insert projects" ON public.projects;
@@ -42,7 +42,7 @@ CREATE POLICY "Members can insert projects"
 ON public.projects FOR INSERT
 TO authenticated
 WITH CHECK (
-  org_id IN (SELECT org_id FROM public.org_members WHERE user_id = auth.uid())
+  org_id IN (SELECT org_id FROM public.org_members WHERE user_id = public.requesting_user_id())
 );
 
 -- TASKS: Organizasyon üyeleri görevleri görebilir ve oluşturabilir
@@ -53,7 +53,7 @@ TO authenticated
 USING (
   project_id IN (
     SELECT id FROM public.projects 
-    WHERE org_id IN (SELECT org_id FROM public.org_members WHERE user_id = auth.uid())
+    WHERE org_id IN (SELECT org_id FROM public.org_members WHERE user_id = public.requesting_user_id())
   )
 );
 
@@ -62,7 +62,7 @@ CREATE POLICY "Members can insert tasks"
 ON public.tasks FOR INSERT
 TO authenticated
 WITH CHECK (
-  user_id = auth.uid()
+  user_id = public.requesting_user_id()
 );
 
 -- 3. EK GÜVENLİK: Authenticated Role Zorunluluğu
