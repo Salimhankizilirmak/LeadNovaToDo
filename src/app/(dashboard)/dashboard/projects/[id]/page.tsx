@@ -39,6 +39,8 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
       initialProject={project}
       initialTasks={project.tasks || []}
       members={members}
+      blocks={projectResp.blocks || []}
     />
   );
+
 }

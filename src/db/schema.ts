@@ -88,6 +88,7 @@ export const tasks = sqliteTable('tasks', {
   projectId: text('project_id').notNull().references(() => projects.id),
   orgId: text('org_id').notNull().references(() => organizations.id),
   assigneeId: text('assignee_id').references(() => profiles.id),
+  blockId: text('block_id').references(() => blocks.id), // Fiziksel İstasyon (Blok) Ataması
   dueDate: text('due_date'),
   createdBy: text('created_by').notNull().references(() => profiles.id),
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
@@ -102,8 +103,12 @@ export const tasksRelations = relations(tasks, ({ one, many }) => ({
     fields: [tasks.orgId],
     references: [organizations.id],
   }),
+  block: one(blocks, {
+    fields: [tasks.blockId],
+    references: [blocks.id],
+  }),
   assignee: one(profiles, {
-    fields: [tasks.assigneeId],
+fields: [tasks.assigneeId],
     references: [profiles.id],
     relationName: 'assignee',
   }),
@@ -149,6 +154,7 @@ export const cellsRelations = relations(cells, ({ one, many }) => ({
     references: [organizations.id],
   }),
   members: many(cellMembers),
+  blocks: many(blocks),
 }));
 
 // 6. Hücre Üyeleri (Çoktan Çoka İlişki)
@@ -233,3 +239,29 @@ export const projectAttachmentsRelations = relations(projectAttachments, ({ one 
   }),
 }));
 
+
+// 5b. Bloklar (İstasyonlar - Hücrelerin içindeki fiziksel birimler)
+export const blocks = sqliteTable('blocks', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  cellId: text('cell_id').notNull().references(() => cells.id),
+  orgId: text('org_id').notNull().references(() => organizations.id),
+  createdBy: text('created_by').notNull().references(() => profiles.id),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const blocksRelations = relations(blocks, ({ one, many }) => ({
+  cell: one(cells, {
+    fields: [blocks.cellId],
+    references: [cells.id],
+  }),
+  organization: one(organizations, {
+    fields: [blocks.orgId],
+    references: [organizations.id],
+  }),
+  creator: one(profiles, {
+    fields: [blocks.createdBy],
+    references: [profiles.id],
+  }),
+  tasks: many(tasks),
+}));

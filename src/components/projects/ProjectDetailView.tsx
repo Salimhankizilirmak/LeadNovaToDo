@@ -27,12 +27,14 @@ interface ProjectDetailViewProps {
   initialProject: any;
   initialTasks: any[];
   members: Member[];
+  blocks?: any[];
 }
 
 export default function ProjectDetailView({ 
   initialProject, 
   initialTasks, 
-  members 
+  members,
+  blocks = []
 }: ProjectDetailViewProps) {
   const router = useRouter();
   const { user } = useUser();
@@ -215,6 +217,7 @@ export default function ProjectDetailView({
         projectId={initialProject.id}
         orgId={initialProject.orgId}
         members={members}
+        blocks={blocks}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onCreated={(newTask) => {

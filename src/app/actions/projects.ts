@@ -2,7 +2,7 @@
 
 import { auth, currentUser, clerkClient } from '@clerk/nextjs/server';
 import { db } from '@/db';
-import { projects, tasks, profiles, cells, cellMembers, projectAttachments } from '@/db/schema';
+import { projects, tasks, profiles, cells, cellMembers, projectAttachments, blocks } from '@/db/schema';
 import { eq, and, desc, or, sql } from 'drizzle-orm';
 import { sendProjectAttachmentNotificationEmail } from '@/lib/email';
 
@@ -116,7 +116,12 @@ export async function getProjectAction(projectId: string) {
       }
     }
 
-    return { success: true, project };
+    const orgBlocks = await db.query.blocks.findMany({
+      where: eq(blocks.orgId, orgId)
+    });
+
+    return { success: true, project, blocks: orgBlocks };
+
   } catch (err: any) {
     console.error('PROJE DETAY HATASI:', err);
     return { success: false, error: err.message };
@@ -206,19 +211,33 @@ export async function getCellsAction() {
       orderBy: [desc(cells.createdAt)],
       with: {
         members: true,
+        blocks: {
+          with: {
+            tasks: {
+              where: (tasks, { ne }) => ne(tasks.status, 'done'),
+              with: {
+                assignee: true
+              }
+            }
+          }
+        }
       }
     });
 
-    // Görev istatistiklerini hesapla
-    const enrichedCells = cellsWithStats.map(cell => ({
-      ...cell,
-      member_count: cell.members.length,
-      task_stats: {
-        total: Math.floor(Math.random() * 10),
-        active: Math.floor(Math.random() * 5),
-        done: Math.floor(Math.random() * 3)
-      }
-    }));
+    // Verileri zenginleştir (istatistikler ve blok verileri)
+    const enrichedCells = cellsWithStats.map(cell => {
+      const allTasks = cell.blocks.flatMap(b => b.tasks);
+      return {
+        ...cell,
+        member_count: cell.members.length,
+        task_stats: {
+          total: allTasks.length,
+          active: allTasks.length,
+          done: 0 // Done olanlar zaten yukarıda filtrelendi, detaya gerekirse ayrı çekilir
+        }
+      };
+    });
+
 
     return { success: true, cells: enrichedCells };
   } catch (err: any) {

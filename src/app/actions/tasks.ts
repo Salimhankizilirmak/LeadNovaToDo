@@ -13,6 +13,7 @@ interface CreateTaskParams {
   orgId: string;
   priority: 'low' | 'medium' | 'high' | 'critical';
   assigneeId?: string | null;
+  blockId?: string | null; // Yeni: Blok / İstasyon ID
   dueDate?: string | null;
   attachment?: { url: string, name: string, size?: number, type?: string };
 }
@@ -44,6 +45,7 @@ export async function createTaskAction(params: CreateTaskParams) {
       orgId: params.orgId,
       priority: params.priority,
       assigneeId: params.assigneeId || null,
+      blockId: params.blockId || null,
       dueDate: params.dueDate || null,
       createdBy: userId,
       status: 'todo',

@@ -18,6 +18,7 @@ const schema = z.object({
   description: z.string().max(500).optional(),
   priority: z.enum(['low', 'medium', 'high', 'critical']),
   assigneeId: z.string().optional().nullable(),
+  blockId: z.string().optional().nullable(),
   dueDate: z.string().optional().nullable(),
 });
 
@@ -28,6 +29,7 @@ interface CreateTaskModalProps {
   projectId: string;
   orgId: string;
   members: Member[];
+  blocks?: any[];
   isOpen: boolean;
   onClose: () => void;
   onCreated: (task: Task) => void;
@@ -37,6 +39,7 @@ export default function CreateTaskModal({
   projectId,
   orgId,
   members,
+  blocks = [],
   isOpen,
   onClose,
   onCreated,
@@ -73,6 +76,7 @@ export default function CreateTaskModal({
         projectId: projectId,
         orgId: orgId,
         assigneeId: values.assigneeId,
+        blockId: values.blockId,
         dueDate: values.dueDate,
         attachment: attachment || undefined
       });
@@ -177,21 +181,40 @@ export default function CreateTaskModal({
             </div>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">
-              Atanan Kişi (Opsiyonel)
-            </label>
-            <select
-              {...register('assigneeId')}
-              className="w-full px-4 py-3 text-sm rounded-xl border border-gray-100 bg-gray-50 text-gray-900 focus:bg-white focus:border-indigo-400 transition-all outline-none appearance-none cursor-pointer"
-            >
-              <option value="">Atanmamış</option>
-              {members.map((member) => (
-                <option key={member.id} value={member.id}>
-                  {member.display_name || member.full_name || member.email?.split('@')[0]}
-                </option>
-              ))}
-            </select>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">
+                Atanan Kişi (Opsiyonel)
+              </label>
+              <select
+                {...register('assigneeId')}
+                className="w-full px-4 py-3 text-sm rounded-xl border border-gray-100 bg-gray-50 text-gray-900 focus:bg-white focus:border-indigo-400 transition-all outline-none appearance-none cursor-pointer"
+              >
+                <option value="">Atanmamış</option>
+                {members.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.display_name || member.full_name || member.email?.split('@')[0]}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">
+                Blok/İstasyon (Opsiyonel)
+              </label>
+              <select
+                {...register('blockId')}
+                className="w-full px-4 py-3 text-sm rounded-xl border border-gray-100 bg-gray-50 text-gray-900 focus:bg-white focus:border-indigo-400 transition-all outline-none appearance-none cursor-pointer"
+              >
+                <option value="">İstasyonsuz</option>
+                {blocks.map((block) => (
+                  <option key={block.id} value={block.id}>
+                    {block.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           
           <div className="space-y-2">
