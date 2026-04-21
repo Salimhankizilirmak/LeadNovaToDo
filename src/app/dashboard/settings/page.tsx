@@ -12,9 +12,11 @@ import {
   Info
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
 import { getOrgSettingsAction, updateOrgNameAction } from '@/app/actions/org';
 
 export default function SettingsPage() {
+  const router = useRouter();
   const [org, setOrg] = useState<any>(null);
   const [role, setRole] = useState<string>('');
   const [newName, setNewName] = useState('');
@@ -28,6 +30,12 @@ export default function SettingsPage() {
         setOrg(res.org);
         setRole(res.role || 'Personel');
         setNewName(res.org?.name || '');
+        
+        // Yetki Kontrolü: Hemen yönlendir
+        if (!['Patron', 'Genel Müdür', 'Admin'].includes(res.role || '')) {
+            toast.error('Bu sayfaya erişim yetkiniz yok.');
+            router.push('/dashboard');
+        }
       }
       setLoading(false);
     }

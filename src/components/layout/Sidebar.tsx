@@ -19,8 +19,9 @@ const navItems = [
   { name: 'Projeler', href: '/dashboard/projects', icon: FolderKanban },
   { name: 'Takvim', href: '/dashboard/calendar', icon: CalendarDays },
   { name: 'Hücreler', href: '/dashboard/cells', icon: Boxes },
-  { name: 'Ekip', href: '/dashboard/team', icon: Users },
-  { name: 'Raporlar', href: '#', icon: BarChart3 },
+  { name: 'Ekip', href: '/dashboard/team', icon: Users, roles: ['Patron', 'Genel Müdür', 'Admin', 'Proje Yöneticisi'] },
+  { name: 'Raporlar', href: '/dashboard/reports', icon: BarChart3, roles: ['Patron', 'Genel Müdür', 'Admin'] },
+  { name: 'Ayarlar', href: '/dashboard/settings', icon: Settings2, roles: ['Patron', 'Genel Müdür', 'Admin'] },
 ];
 
 export default function Sidebar() {
@@ -54,7 +55,10 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
-        {navItems.map((item) => {
+        {navItems.map((item: any) => {
+          const role = user?.publicMetadata?.role as string || 'Personel';
+          if (item.roles && !item.roles.includes(role)) return null;
+
           const isActive = pathname === item.href;
           return (
             <Link
@@ -95,7 +99,9 @@ export default function Sidebar() {
                   user?.firstName ?? user?.emailAddresses?.[0]?.emailAddress ?? 'Kullanıcı'
                 )}
               </p>
-              <p className="text-[10px] text-gray-500 truncate">Sistem Yöneticisi</p>
+              <p className="text-[10px] text-gray-500 truncate">
+                {(user?.publicMetadata?.role as string) || 'Personel'}
+              </p>
             </div>
           </div>
           

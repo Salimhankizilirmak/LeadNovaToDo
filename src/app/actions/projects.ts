@@ -1,10 +1,7 @@
-'use server';
-
-import { auth, currentUser, clerkClient } from '@clerk/nextjs/server';
-import { db } from '@/db';
 import { projects, tasks, profiles, cells, cellMembers, projectAttachments, blocks } from '@/db/schema';
-import { eq, and, desc, or, sql } from 'drizzle-orm';
+import { eq, and, desc, or, sql, inArray } from 'drizzle-orm';
 import { sendProjectAttachmentNotificationEmail } from '@/lib/email';
+import { getAuthContext, isBoss, getSupervisedCellIds } from '@/lib/auth-utils';
 
 
 
@@ -13,29 +10,33 @@ import { sendProjectAttachmentNotificationEmail } from '@/lib/email';
  */
 export async function getProjectsAction(limit = 20) {
   try {
-    const { userId, orgId } = await auth();
-    if (!userId || !orgId) return { success: false, error: 'Oturum bulunamadı.' };
-
-    const userProfile = await db.query.profiles.findFirst({
-      where: eq(profiles.id, userId)
-    });
-
-    const isHighRole = userProfile && ['Patron', 'Genel Müdür', 'Admin'].includes(userProfile.role);
+    const authCtx = await getAuthContext();
+    if (!authCtx) return { success: false, error: 'Oturum bulunamadı.' };
+    const { userId, orgId, role } = authCtx;
 
     let data;
-    if (isHighRole) {
+    if (isBoss(role)) {
       data = await db.query.projects.findMany({
         where: eq(projects.orgId, orgId),
         limit: limit,
         orderBy: [desc(projects.createdAt)],
-        with: {
-          manager: true,
-          creator: true
-        }
+        with: { manager: true, creator: true }
+      });
+    } else if (role === 'Vardiya Amiri') {
+      const cellIds = await getSupervisedCellIds(userId);
+      if (cellIds.length === 0) return { success: true, projects: [] };
+      
+      data = await db.query.projects.findMany({
+        where: and(
+            eq(projects.orgId, orgId),
+            inArray(projects.cellId, cellIds)
+        ),
+        limit: limit,
+        orderBy: [desc(projects.createdAt)],
+        with: { manager: true, creator: true }
       });
     } else {
-      // Düşük roller: SADECE manager olduğu veya kendisine görev atandığı projeleri gör
-      // Manuel SQL Join yaklaşımı ile ID'leri toplayalım
+      // PM ve Personel: SADECE manager olduğu veya kendisine görev atandığı projeleri gör
       const involved = await db.selectDistinct({ id: projects.id })
         .from(projects)
         .leftJoin(tasks, eq(projects.id, tasks.projectId))
@@ -52,15 +53,11 @@ export async function getProjectsAction(limit = 20) {
       const projectIds = involved.map(p => p.id);
       if (projectIds.length === 0) return { success: true, projects: [] };
 
-      // Detaylı bilgileri fetch et
       data = await db.query.projects.findMany({
-        where: sql`${projects.id} IN (${sql.join(projectIds.map(id => sql`${id}`), sql`, `)})`,
+        where: inArray(projects.id, projectIds),
         limit: limit,
         orderBy: [desc(projects.createdAt)],
-        with: {
-          manager: true,
-          creator: true
-        }
+        with: { manager: true, creator: true }
       });
     }
 
@@ -139,13 +136,19 @@ export async function createProjectAction(params: {
   color?: string,
   managerId?: string,
   budget?: number,
-  cellId?: string, // Yeni: Hücre ID
+  cellId?: string, 
   attachment?: { url: string, name: string, size?: number, type?: string }
 }) {
 
   try {
-    const { userId, orgId } = await auth();
-    if (!userId || !orgId) return { success: false, error: 'Oturum bulunamadı.' };
+    const authCtx = await getAuthContext();
+    if (!authCtx) return { success: false, error: 'Oturum bulunamadı.' };
+    const { userId, orgId, role } = authCtx;
+
+    // Yetki Kontrolü: Sadece Patron, GM ve Admin proje oluşturabilir.
+    if (!isBoss(role)) {
+        return { success: false, error: 'Proje oluşturma yetkiniz bulunmamaktadır.' };
+    }
 
     const projectId = crypto.randomUUID();
     const [newProject] = await db.insert(projects).values({
@@ -154,7 +157,7 @@ export async function createProjectAction(params: {
       description: params.description,
       color: params.color,
       orgId: orgId,
-      cellId: params.cellId, // Hücre ataması
+      cellId: params.cellId || null, // Hücre ataması (BUG FIX: Açıkça null kontrolü)
       createdBy: userId,
       managerId: params.managerId || userId,
       budget: params.budget || 0,
@@ -206,39 +209,51 @@ export async function getOrgMembersAction() {
  */
 export async function getCellsAction() {
   try {
-    const { userId, orgId } = await auth();
-    if (!userId || !orgId) return { success: false, error: 'Oturum bulunamadı.' };
+    const authCtx = await getAuthContext();
+    if (!authCtx) return { success: false, error: 'Oturum bulunamadı.' };
+    const { userId, orgId, role } = authCtx;
 
-    const cellsWithStats = await db.query.cells.findMany({
-      where: eq(cells.orgId, orgId),
-      orderBy: [desc(cells.createdAt)],
-      with: {
-        members: true,
-        blocks: {
-          with: {
-            tasks: {
-              where: (tasks, { ne }) => ne(tasks.status, 'done'),
-              with: {
-                assignee: true
-              }
-            }
-          }
-        },
-        projects: {
-          with: {
-            tasks: {
-              where: (tasks, { ne }) => ne(tasks.status, 'done'),
-              with: {
-                assignee: true
-              }
-            }
-          }
-        }
-      }
-    });
+    let cellsQuery;
+    if (isBoss(role)) {
+       cellsQuery = db.query.cells.findMany({
+         where: eq(cells.orgId, orgId),
+         orderBy: [desc(cells.createdAt)],
+         with: {
+           members: true,
+           blocks: { with: { tasks: { where: (tasks, { ne }) => ne(tasks.status, 'done'), with: { assignee: true } } } },
+           projects: { with: { tasks: { where: (tasks, { ne }) => ne(tasks.status, 'done'), with: { assignee: true } } } }
+         }
+       });
+    } else if (role === 'Vardiya Amiri') {
+       const supervisedCellIds = await getSupervisedCellIds(userId);
+       if (supervisedCellIds.length === 0) return { success: true, cells: [] };
+       
+       cellsQuery = db.query.cells.findMany({
+         where: and(eq(cells.orgId, orgId), inArray(cells.id, supervisedCellIds)),
+         with: {
+           members: true,
+           blocks: { with: { tasks: { where: (tasks, { ne }) => ne(tasks.status, 'done'), with: { assignee: true } } } },
+           projects: { with: { tasks: { where: (tasks, { ne }) => ne(tasks.status, 'done'), with: { assignee: true } } } }
+         }
+       });
+    } else {
+       // Personel veya PM: Sadece dahil olduğu hücreleri gör
+       const memberships = await db.query.cellMembers.findMany({ where: eq(cellMembers.userId, userId) });
+       const myCellIds = memberships.map(m => m.cellId);
+       if (myCellIds.length === 0) return { success: true, cells: [] };
 
+       cellsQuery = db.query.cells.findMany({
+         where: inArray(cells.id, myCellIds),
+         with: {
+           members: true,
+           blocks: { with: { tasks: { where: (tasks, { ne }) => ne(tasks.status, 'done'), with: { assignee: true } } } },
+           projects: { with: { tasks: { where: (tasks, { ne }) => ne(tasks.status, 'done'), with: { assignee: true } } } }
+         }
+       });
+    }
 
-    // Verileri zenginleştir (istatistikler ve blok verileri)
+    const cellsWithStats = await cellsQuery;
+
     const enrichedCells = cellsWithStats.map(cell => {
       const allTasks = cell.blocks.flatMap(b => b.tasks);
       return {
@@ -247,11 +262,10 @@ export async function getCellsAction() {
         task_stats: {
           total: allTasks.length,
           active: allTasks.length,
-          done: 0 // Done olanlar zaten yukarıda filtrelendi, detaya gerekirse ayrı çekilir
+          done: 0 
         }
       };
     });
-
 
     return { success: true, cells: enrichedCells };
   } catch (err: any) {
@@ -265,8 +279,13 @@ export async function getCellsAction() {
  */
 export async function createCellAction(name: string, description?: string) {
   try {
-    const { userId, orgId } = await auth();
-    if (!userId || !orgId) return { success: false, error: 'Oturum bulunamadı.' };
+    const authCtx = await getAuthContext();
+    if (!authCtx) return { success: false, error: 'Oturum bulunamadı.' };
+    const { userId, orgId, role } = authCtx;
+
+    if (!isBoss(role)) {
+        return { success: false, error: 'Hücre oluşturma yetkiniz bulunmamaktadır.' };
+    }
 
     const cellId = crypto.randomUUID();
     const [newCell] = await db.insert(cells).values({

@@ -1,10 +1,7 @@
-'use server';
-
-import { auth, currentUser, clerkClient } from '@clerk/nextjs/server';
-import { db } from '@/db';
-import { tasks, projects, profiles, taskAttachments, taskHistory } from '@/db/schema';
-import { eq, and, desc } from 'drizzle-orm';
+import { tasks, projects, profiles, taskAttachments, taskHistory, cellMembers } from '@/db/schema';
+import { eq, and, desc, or, inArray } from 'drizzle-orm';
 import { sendTaskAssignmentEmail } from '@/lib/email';
+import { getAuthContext, isBoss, getSupervisedCellIds } from '@/lib/auth-utils';
 
 interface CreateTaskParams {
   title: string;
@@ -23,16 +20,27 @@ interface CreateTaskParams {
  */
 export async function createTaskAction(params: CreateTaskParams) {
   try {
-    const { userId, orgId: currentOrgId } = await auth();
-    const user = await currentUser();
-
-    if (!userId || !user) {
-      return { success: false, error: 'Oturum açılmamış. Lütfen giriş yapın.' };
-    }
+    const authCtx = await getAuthContext();
+    if (!authCtx) return { success: false, error: 'Oturum bulunamadı.' };
+    const { userId, orgId, role } = authCtx;
 
     // Güvenlik Kontrolü: Organizasyon ID eşleşmeli
-    if (params.orgId !== currentOrgId) {
+    if (params.orgId !== orgId) {
       return { success: false, error: 'Yetkisiz organizasyon işlemi.' };
+    }
+
+    // RBAC: SADECE Patron, GM, Admin ve yetkili PM/Amir görev oluşturabilir.
+    if (!isBoss(role)) {
+        const project = await db.query.projects.findFirst({ where: eq(projects.id, params.projectId) });
+        if (!project) return { success: false, error: 'Proje bulunamadı.' };
+
+        const supervisedCellIds = await getSupervisedCellIds(userId);
+        const isProjectManager = project.managerId === userId;
+        const isCellSupervisor = project.cellId && supervisedCellIds.includes(project.cellId);
+
+        if (!isProjectManager && !isCellSupervisor) {
+            return { success: false, error: 'Bu projede görev oluşturma yetkiniz yok.' };
+        }
     }
 
     // 1. Görevi veritabanına kaydet
@@ -108,30 +116,38 @@ export async function createTaskAction(params: CreateTaskParams) {
  */
 export async function updateTaskStatusAction(taskId: string, newStatus: string) {
   try {
-    const { userId, orgId } = await auth();
-    if (!userId || !orgId) return { success: false, error: 'Oturum açılmamış.' };
-    const user = await currentUser();
-    if (!user) return { success: false, error: 'Kullanıcı profili bulunamadı.' };
+    const authCtx = await getAuthContext();
+    if (!authCtx) return { success: false, error: 'Oturum bulunamadı.' };
+    const { userId, orgId, role } = authCtx;
 
     // 0. Eski statüyü al (Geçmiş için)
     const existingTask = await db.query.tasks.findFirst({
         where: and(eq(tasks.id, taskId), eq(tasks.orgId, orgId)),
-        columns: { status: true }
+        with: { project: true }
     });
 
     if (!existingTask) {
         return { success: false, error: 'Görev bulunamadı.' };
     }
 
-    // Güvenlik: Sadece kendi organizasyonundaki görevi güncelleyebilir
+    // RBAC: Personel sadece kendi görevini güncelleyebilir.
+    if (!isBoss(role)) {
+        const supervisedCellIds = await getSupervisedCellIds(userId);
+        const isAssignee = existingTask.assigneeId === userId;
+        const isProjectManager = existingTask.project?.managerId === userId;
+        const isCellSupervisor = existingTask.project?.cellId && supervisedCellIds.includes(existingTask.project.cellId);
+
+        if (!isAssignee && !isProjectManager && !isCellSupervisor) {
+            return { success: false, error: 'Bu görevi güncelleme yetkiniz yok.' };
+        }
+    }
+
+    // Statüyü güncelle
     const [updatedTask] = await db.update(tasks)
       .set({ 
         status: newStatus as any
       })
-      .where(and(
-        eq(tasks.id, taskId),
-        eq(tasks.orgId, orgId)
-      ))
+      .where(eq(tasks.id, taskId))
       .returning();
 
     if (!updatedTask) {
@@ -182,16 +198,32 @@ export async function getTaskHistoryAction(taskId: string) {
  */
 export async function getDashboardDataAction() {
   try {
-    const { userId, orgId } = await auth();
-    const user = await currentUser();
-    if (!userId || !orgId) return { success: false, error: 'Oturum bulunamadı.' };
+    const authCtx = await getAuthContext();
+    if (!authCtx) return { success: false, error: 'Oturum bulunamadı.' };
+    const { userId, orgId, role } = authCtx;
 
-    const myRole = user?.publicMetadata?.role as string;
-    const isManager = ['Patron', 'Genel Müdür', 'Admin'].includes(myRole);
+    const isGlobalManager = isBoss(role);
+    const supervisedCellIds = await getSupervisedCellIds(userId);
+    
+    // Filtreleme mantığı
+    let whereClause;
+    if (isGlobalManager) {
+        whereClause = eq(tasks.orgId, orgId);
+    } else if (role === 'Vardiya Amiri') {
+        const cellProjects = await db.select({ id: projects.id }).from(projects).where(inArray(projects.cellId, supervisedCellIds));
+        const projectIds = cellProjects.map(p => p.id);
+        whereClause = and(eq(tasks.orgId, orgId), or(eq(tasks.assigneeId, userId), projectIds.length > 0 ? inArray(tasks.projectId, projectIds) : undefined));
+    } else if (role === 'Proje Yöneticisi') {
+        const managedProjects = await db.select({ id: projects.id }).from(projects).where(eq(projects.managerId, userId));
+        const projectIds = managedProjects.map(p => p.id);
+        whereClause = and(eq(tasks.orgId, orgId), or(eq(tasks.assigneeId, userId), projectIds.length > 0 ? inArray(tasks.projectId, projectIds) : undefined));
+    } else {
+        whereClause = and(eq(tasks.orgId, orgId), eq(tasks.assigneeId, userId));
+    }
 
     // 1. Son Görevler
     const recentTasks = await db.query.tasks.findMany({
-      where: isManager ? eq(tasks.orgId, orgId) : and(eq(tasks.orgId, orgId), eq(tasks.assigneeId, userId)),
+      where: whereClause,
       limit: 5,
       orderBy: [desc(tasks.createdAt)],
       with: {
@@ -201,8 +233,8 @@ export async function getDashboardDataAction() {
     });
 
     // 2. İstatistikler
-    const allOrgTasks = await db.query.tasks.findMany({
-      where: isManager ? eq(tasks.orgId, orgId) : and(eq(tasks.orgId, orgId), eq(tasks.assigneeId, userId)),
+    const allFilteredTasks = await db.query.tasks.findMany({
+      where: whereClause,
       columns: {
         status: true,
         priority: true
@@ -210,10 +242,10 @@ export async function getDashboardDataAction() {
     });
 
     const stats = {
-      total: allOrgTasks.length,
-      completed: allOrgTasks.filter(t => t.status === 'done').length,
-      pending: allOrgTasks.filter(t => t.status !== 'done').length,
-      critical: allOrgTasks.filter(t => t.priority === 'critical').length,
+      total: allFilteredTasks.length,
+      completed: allFilteredTasks.filter(t => t.status === 'done').length,
+      pending: allFilteredTasks.filter(t => t.status !== 'done').length,
+      critical: allFilteredTasks.filter(t => t.priority === 'critical').length,
     };
 
     return { success: true, tasks: recentTasks, stats };

@@ -42,7 +42,14 @@ export default function ReportsPage() {
       const res = await getAnalyticsAction();
       if (res.success) {
         setData(res.data);
-        if (res.role) setRole(res.role);
+        if (res.role) {
+            setRole(res.role);
+            // Yetki Kontrolü: Personel raporlara erişemez (Sidebar'da da gizli)
+            if (res.role === 'Personel') {
+                toast.error('Raporlar sayfasına erişim yetkiniz yok.');
+                window.location.href = '/dashboard';
+            }
+        }
       } else {
         setError(res.error || 'Veriler yüklenemedi.');
       }

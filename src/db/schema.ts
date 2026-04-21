@@ -189,6 +189,7 @@ export const cellsRelations = relations(cells, ({ one, many }) => ({
 export const cellMembers = sqliteTable('cell_members', {
   cellId: text('cell_id').notNull().references(() => cells.id),
   userId: text('user_id').notNull().references(() => profiles.id),
+  isSupervisor: integer('is_supervisor', { mode: 'boolean' }).default(false), // Vardiya Amiri Flag (Many-to-Many Esnekliği)
 }, (table) => [
   primaryKey({ columns: [table.cellId, table.userId] })
 ]);

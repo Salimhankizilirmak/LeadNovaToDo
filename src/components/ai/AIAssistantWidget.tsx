@@ -47,7 +47,7 @@ export default function AIAssistantWidget() {
 
 
   const role = user?.publicMetadata?.role as string;
-  const isAuthorized = ['Patron', 'Genel Müdür', 'Admin'].includes(role);
+  const isAuthorized = ['Patron', 'Genel Müdür', 'Admin', 'Proje Yöneticisi', 'Vardiya Amiri'].includes(role);
 
   // Otomatik scroll
   useEffect(() => {

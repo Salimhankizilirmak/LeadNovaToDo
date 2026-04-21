@@ -1,52 +1,57 @@
-'use server';
-
-import { auth, currentUser } from '@clerk/nextjs/server';
-import { db } from '@/db';
-import { projects, tasks, profiles, cells, taskHistory, blocks } from '@/db/schema';
-import { eq, and, sql, desc, inArray } from 'drizzle-orm';
+import { getAuthContext, isBoss, getSupervisedCellIds } from '@/lib/auth-utils';
 
 /**
  * Raporlar sayfası için yetki bazlı analitik verileri getirir.
  */
 export async function getAnalyticsAction() {
   try {
-    const { userId, orgId } = await auth();
-    const user = await currentUser();
+    const authCtx = await getAuthContext();
+    if (!authCtx) return { success: false, error: 'Oturum bulunamadı.' };
+    const { userId, orgId, role } = authCtx;
 
-    if (!userId || !orgId || !user) {
-      return { success: false, error: 'Oturum bulunamadı.' };
-    }
-
-    const myRole = user.publicMetadata?.role as string || 'Personel';
-    const isBoss = ['Patron', 'Genel Müdür', 'Admin'].includes(myRole);
+    const isGlobalManager = isBoss(role);
+    const supervisedCellIds = await getSupervisedCellIds(userId);
     
     // 1. Özet İstatistikler (Yetkiye Göre Filtrelenmiş)
-    // -------------------------------------------------------
     let statsQuery;
-    if (isBoss) {
-        // Tüm organizasyon
+    if (isGlobalManager) {
         statsQuery = db.select({
             status: tasks.status,
             count: sql<number>`count(*)`
         }).from(tasks).where(eq(tasks.orgId, orgId)).groupBy(tasks.status);
-    } else if (myRole === 'Proje Yöneticisi') {
-        // Sadece yönettiği projelerdeki görevler
+    } else if (role === 'Vardiya Amiri') {
+        const cellProjects = await db.select({ id: projects.id }).from(projects).where(inArray(projects.cellId, supervisedCellIds));
+        const projectIds = cellProjects.map(p => p.id);
+        
+        statsQuery = db.select({
+            status: tasks.status,
+            count: sql<number>`count(*)`
+        }).from(tasks).where(
+            and(
+                eq(tasks.orgId, orgId),
+                or(
+                    eq(tasks.assigneeId, userId),
+                    projectIds.length > 0 ? inArray(tasks.projectId, projectIds) : undefined
+                )
+            )
+        ).groupBy(tasks.status);
+    } else if (role === 'Proje Yöneticisi') {
         const myProjects = await db.select({ id: projects.id }).from(projects).where(eq(projects.managerId, userId));
         const projectIds = myProjects.map(p => p.id);
         
-        if (projectIds.length > 0) {
-            statsQuery = db.select({
-                status: tasks.status,
-                count: sql<number>`count(*)`
-            }).from(tasks).where(
-                and(
-                    eq(tasks.orgId, orgId),
-                    sql`${tasks.projectId} IN (${sql.join(projectIds.map(id => sql`${id}`), sql`, `)})`
+        statsQuery = db.select({
+            status: tasks.status,
+            count: sql<number>`count(*)`
+        }).from(tasks).where(
+            and(
+                eq(tasks.orgId, orgId),
+                or(
+                    eq(tasks.assigneeId, userId),
+                    projectIds.length > 0 ? inArray(tasks.projectId, projectIds) : undefined
                 )
-            ).groupBy(tasks.status);
-        }
+            )
+        ).groupBy(tasks.status);
     } else {
-        // Personel: Sadece kendi görevleri
         statsQuery = db.select({
             status: tasks.status,
             count: sql<number>`count(*)`
@@ -55,12 +60,11 @@ export async function getAnalyticsAction() {
 
     const taskStats = statsQuery ? await statsQuery : [];
 
-    // 2. Hücre Bazlı Performans (Sadece Patron/GM görebilir)
-    // -------------------------------------------------------
+    // 2. Hücre Bazlı Performans (Patron/GM veya Vardiya Amiri)
     let cellPerformance: any[] = [];
-    if (isBoss) {
+    if (isGlobalManager || (role === 'Vardiya Amiri' && supervisedCellIds.length > 0)) {
         const cellsData = await db.query.cells.findMany({
-            where: eq(cells.orgId, orgId),
+            where: isGlobalManager ? eq(cells.orgId, orgId) : and(eq(cells.orgId, orgId), inArray(cells.id, supervisedCellIds)),
             with: {
                 projects: {
                     with: {
@@ -83,11 +87,10 @@ export async function getAnalyticsAction() {
     }
 
     // 3. Bütçe Dağılımı (Sadece Patron/GM/PM)
-    // -------------------------------------------------------
     let budgetData: any[] = [];
-    if (isBoss || myRole === 'Proje Yöneticisi') {
+    if (isGlobalManager || role === 'Proje Yöneticisi') {
         const projectsData = await db.query.projects.findMany({
-            where: isBoss ? eq(projects.orgId, orgId) : and(eq(projects.orgId, orgId), eq(projects.managerId, userId)),
+            where: isGlobalManager ? eq(projects.orgId, orgId) : and(eq(projects.orgId, orgId), eq(projects.managerId, userId)),
             columns: {
                 name: true,
                 budget: true
@@ -101,7 +104,7 @@ export async function getAnalyticsAction() {
 
     return {
       success: true,
-      role: myRole,
+      role: role,
       data: {
         taskStats,
         cellPerformance,
@@ -117,26 +120,36 @@ export async function getAnalyticsAction() {
 
 /**
  * Excel Dışa Aktarım (Kurumsal) için detaylı görev verilerini getirir.
- * Patron ve yöneticiler operasyonun tüm detaylarını (bütçe, tamamlanma zamanı vb.) görür.
  */
 export async function getExcelDataAction() {
     try {
-        const { userId, orgId } = await auth();
-        const user = await currentUser();
+        const authCtx = await getAuthContext();
+        if (!authCtx) return { success: false, error: 'Oturum bulunamadı.' };
+        const { userId, orgId, role } = authCtx;
 
-        if (!userId || !orgId || !user) {
-            return { success: false, error: 'Oturum bulunamadı.' };
-        }
-
-        const myRole = user.publicMetadata?.role as string || 'Personel';
-        const isBoss = ['Patron', 'Genel Müdür', 'Admin'].includes(myRole);
-
-        if (!isBoss) {
+        // Excel yetkisi: Patron, GM, Admin, PM ve Vardiya Amiri.
+        if (role === 'Personel') {
             return { success: false, error: 'Excel raporu oluşturma yetkiniz bulunmamaktadır.' };
         }
 
+        const isGlobalManager = isBoss(role);
+        const supervisedCellIds = await getSupervisedCellIds(userId);
+
+        let whereClause;
+        if (isGlobalManager) {
+            whereClause = eq(tasks.orgId, orgId);
+        } else if (role === 'Vardiya Amiri') {
+            const cellProjects = await db.select({ id: projects.id }).from(projects).where(inArray(projects.cellId, supervisedCellIds));
+            const projectIds = cellProjects.map(p => p.id);
+            whereClause = and(eq(tasks.orgId, orgId), or(eq(tasks.assigneeId, userId), projectIds.length > 0 ? inArray(tasks.projectId, projectIds) : undefined));
+        } else if (role === 'Proje Yöneticisi') {
+            const managedProjects = await db.select({ id: projects.id }).from(projects).where(eq(projects.managerId, userId));
+            const projectIds = managedProjects.map(p => p.id);
+            whereClause = and(eq(tasks.orgId, orgId), or(eq(tasks.assigneeId, userId), projectIds.length > 0 ? inArray(tasks.projectId, projectIds) : undefined));
+        }
+
         const rawTasks = await db.query.tasks.findMany({
-            where: eq(tasks.orgId, orgId),
+            where: whereClause,
             with: {
                 project: {
                    with: { cell: true }

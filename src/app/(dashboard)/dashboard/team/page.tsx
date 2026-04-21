@@ -23,7 +23,12 @@ export default async function TeamPage() {
   // Mevcut kullanıcının rolünü profiller içinden bulalım
   const myProfile = profiles?.find(p => p.id === userId);
   const myIndustrialRole = (myProfile?.role as UserRole) || 'Personel';
-  
+
+  // Yetki Kontrolü: Sadece Patron, GM, Admin ve PM görebilir.
+  if (!['Patron', 'Genel Müdür', 'Admin', 'Proje Yöneticisi'].includes(myIndustrialRole)) {
+    redirect('/dashboard');
+  }
+
   const isAdmin = orgRole === 'org:admin' || ['Patron', 'Genel Müdür', 'Admin'].includes(myIndustrialRole);
 
   const formattedMembers = (profiles?.map(m => ({
