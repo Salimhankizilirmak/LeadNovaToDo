@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { motion, Variants } from 'framer-motion';
@@ -10,7 +11,9 @@ import {
   Bot,
   ShieldCheck,
   FileSpreadsheet,
-  ChevronRight
+  ChevronRight,
+  Download,
+  Smartphone
 } from 'lucide-react';
 
 /* ── Feature Cards Verisi ────────────────────────────────────── */
@@ -80,6 +83,47 @@ const itemVariants: Variants = {
 };
 
 export default function LandingPage() {
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isInstallable, setIsInstallable] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      // Chrome 67 ve öncesinde otomatik çıkan istemi engelle
+      e.preventDefault();
+      // Olayı daha sonra tetiklemek üzere sakla
+      setDeferredPrompt(e);
+      // Butonu göster
+      setIsInstallable(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    // Uygulama yüklendiğinde butonu gizle
+    window.addEventListener('appinstalled', () => {
+      setIsInstallable(false);
+      setDeferredPrompt(null);
+    });
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+
+    // Yükleme istemini göster
+    deferredPrompt.prompt();
+
+    // Kullanıcının cevabını bekle
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`Kullanıcı yükleme cevabı: ${outcome}`);
+
+    // İstem bir kez kullanılabilir, temizle
+    setDeferredPrompt(null);
+    setIsInstallable(false);
+  };
+
   return (
     <div className="min-h-screen bg-[#030712] font-[family-name:var(--font-geist-sans)] selection:bg-indigo-500/30 overflow-hidden">
       
@@ -157,6 +201,21 @@ export default function LandingPage() {
               Özellikleri Keşfet
               <ChevronRight className="w-5 h-5 text-gray-400 group-hover:translate-x-1 group-hover:text-white transition-all" />
             </a>
+
+            {isInstallable && (
+              <motion.button
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={handleInstallClick}
+                className="group flex items-center gap-3 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 font-bold px-8 py-4 rounded-2xl text-base transition-all duration-300 w-full sm:w-auto justify-center shadow-[0_0_20px_rgba(99,102,241,0.1)]"
+              >
+                <Smartphone className="w-5 h-5 group-hover:animate-bounce" />
+                Uygulamayı İndir
+                <Download className="w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity" />
+              </motion.button>
+            )}
           </motion.div>
         </motion.div>
       </section>
