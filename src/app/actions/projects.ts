@@ -1,9 +1,11 @@
 'use server';
 
-import { auth, currentUser } from '@clerk/nextjs/server';
+import { auth, currentUser, clerkClient } from '@clerk/nextjs/server';
 import { db } from '@/db';
 import { projects, tasks, profiles, cells, cellMembers, projectAttachments } from '@/db/schema';
 import { eq, and, desc, or, sql } from 'drizzle-orm';
+import { sendProjectAttachmentNotificationEmail } from '@/lib/email';
+
 
 
 /**
@@ -130,8 +132,10 @@ export async function createProjectAction(params: {
   description?: string,
   color?: string,
   managerId?: string,
+  budget?: number,
   attachment?: { url: string, name: string, size?: number, type?: string }
 }) {
+
   try {
     const { userId, orgId } = await auth();
     if (!userId || !orgId) return { success: false, error: 'Oturum bulunamadı.' };
@@ -145,6 +149,7 @@ export async function createProjectAction(params: {
       orgId: orgId,
       createdBy: userId,
       managerId: params.managerId || userId,
+      budget: params.budget || 0,
       status: 'active'
     }).returning();
 
@@ -168,8 +173,8 @@ export async function createProjectAction(params: {
   }
 }
 
-
 /**
+
  * Organizasyon üyelerini profil bilgileriyle getirir.
  */
 export async function getOrgMembersAction() {
@@ -204,10 +209,7 @@ export async function getCellsAction() {
       }
     });
 
-    // Görev istatistiklerini hesapla (Hücre bazlı görev eşleşmesi şemada direkt yoksa, 
-    // şimdilik hücrelerin ait olduğu organizasyonun genel durumunu veya mock veriyi dönelim)
-    // Not: Gerçek senaryoda tasks tablosunda cellId olmalı. 
-    // Şemada henüz yok, şimdilik organizasyon bazlı özet veriyoruz.
+    // Görev istatistiklerini hesapla
     const enrichedCells = cellsWithStats.map(cell => ({
       ...cell,
       member_count: cell.members.length,
@@ -248,6 +250,7 @@ export async function createCellAction(name: string, description?: string) {
   }
 }
 
+
 /**
  * Proje Eklerini Kaydetme (UploadThing sonrası)
  */
@@ -260,7 +263,8 @@ export async function addProjectAttachmentAction(params: {
 }) {
   try {
     const { userId, orgId } = await auth();
-    if (!userId || !orgId) return { success: false, error: 'Oturum açılmamış.' };
+    const user = await currentUser();
+    if (!userId || !orgId || !user) return { success: false, error: 'Oturum açılmamış.' };
 
     const attachmentId = crypto.randomUUID();
     const [attachment] = await db.insert(projectAttachments).values({
@@ -273,10 +277,37 @@ export async function addProjectAttachmentAction(params: {
       createdBy: userId
     }).returning();
 
+    // ── Email Bildirimi (Manager'a) ──
+    try {
+        const project = await db.query.projects.findFirst({
+            where: eq(projects.id, params.projectId)
+        });
+
+        if (project && project.managerId && project.managerId !== userId) {
+            const client = await clerkClient();
+            const manager = await client.users.getUser(project.managerId);
+            const managerEmail = manager.emailAddresses[0]?.emailAddress;
+
+            if (managerEmail) {
+                sendProjectAttachmentNotificationEmail(
+                    managerEmail,
+                    manager.fullName || 'Sayın Yöneticimiz',
+                    project.name,
+                    params.fileName,
+                    user.firstName || user.emailAddresses[0].emailAddress.split('@')[0]
+                ).catch(e => console.error("PM NOTIF ERROR:", e));
+            }
+        }
+    } catch (e) {
+        console.error("ATTACHMENT MAIL PROCESS ERROR:", e);
+    }
+
     return { success: true, attachment };
   } catch (err: any) {
     console.error('PROJE EKLERİ KAYIT HATASI:', err);
     return { success: false, error: err.message };
   }
 }
+
+
 

@@ -1,219 +1,180 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useChat } from '@ai-sdk/react';
 import { 
   Sparkles, 
   X, 
-  Send, 
   Bot, 
   User, 
   Loader2, 
-  Lightbulb,
-  AlertTriangle,
-  Zap
+  Zap,
+  ArrowRight
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { toast } from 'sonner';
-import { getAIContextAction } from '@/app/actions/ai';
+import { useUser } from '@clerk/nextjs';
 
-/* ── Tipler ─────────────────────────────────────────────────── */
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-}
+import { DefaultChatTransport } from 'ai';
 
-interface ProjectContext {
-  name: string;
-  tasks: { title: string; status: string }[];
-}
-
-/* ── Hızlı Aksiyon Çipleri ──────────────────────────────────── */
-const QUICK_ACTIONS = [
-  { id: 'analyze', label: 'Projeyi Analiz Et', icon: <Zap size={14} />, prompt: 'Bu projenin genel durumunu analiz et ve özetle.' },
-  { id: 'risks', label: 'Riskleri Göster', icon: <AlertTriangle size={14} />, prompt: 'Bu projedeki potansiyel riskleri ve gecikme ihtimalleri olan işleri bul.' },
-  { id: 'suggest', label: 'Görev Öner', icon: <Lightbulb size={14} />, prompt: 'Bu projenin ilerlemesi için 3 tane yeni ve mantıklı alt görev öner.' },
-];
-
-export default function AIAssistantWidget({ projectId }: { projectId?: string }) {
+export default function AIAssistantWidget() {
+  const { user, isLoaded } = useUser();
   const [isOpen, setIsOpen] = useState(false);
-  const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: 'Merhaba! Ben LeadNova AI. Sana projelerin ve görevlerin konusunda nasıl yardımcı olabilirim?' }
-  ]);
-  const [loading, setLoading] = useState(false);
-  const [projectData, setProjectData] = useState<ProjectContext | null>(null);
-  
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const { messages, sendMessage, status } = useChat({
+    transport: new DefaultChatTransport({ api: '/api/ai/chat' }),
+    messages: [
+      { 
+        id: 'welcome', 
+        role: 'assistant', 
+        parts: [{ type: 'text', text: 'Sayın Yöneticim, LeadNova Kurumsal Yapay Zeka Danışmanınız olarak hizmetinizdeyim. Organizasyonunuzun genel durumu, projeler ve departman verileri hakkında rapor sunmamı ister misiniz?' }]
+      } as any
+    ]
+  });
+
+
+  const [input, setInput] = useState('');
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => setInput(e.target.value);
+  
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim()) return;
+    sendMessage({ text: input });
+    setInput('');
+  };
+
+  const isLoading = status === 'submitted' || status === 'streaming';
+
+
+  const role = user?.publicMetadata?.role as string;
+  const isAuthorized = ['Patron', 'Genel Müdür', 'Admin'].includes(role);
 
   // Otomatik scroll
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, loading]);
+  }, [messages, isLoading]);
 
-  // Proje verisini arka planda çek (Context için)
-  useEffect(() => {
-    if (isOpen && projectId) {
-      const fetchContext = async () => {
-        const result = await getAIContextAction(projectId);
-        if (result.success && result.context) {
-          setProjectData(result.context as ProjectContext);
-        }
-      };
-      fetchContext();
-    }
-  }, [projectId, isOpen]);
-
-  const handleSendMessage = async (text: string) => {
-    if (!text.trim() || loading) return;
-
-    const newMessages: Message[] = [...messages, { role: 'user', content: text }];
-    setMessages(newMessages);
-    setInput('');
-    setLoading(true);
-
-    try {
-      const response = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: newMessages,
-          contextData: projectData
-        }),
-      });
-
-      const data = await response.json();
-      if (data.error) throw new Error(data.error);
-
-      setMessages([...newMessages, { role: 'assistant', content: data.text }]);
-    } catch {
-      toast.error('AI yanıt verirken bir hata oluştu.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  if (!isLoaded || !isAuthorized) return null;
 
   return (
     <>
-      {/* Floating Action Button (FAB) */}
+      {/* Floating Action Button (FAB) - Premium Style */}
       <button
         onClick={() => setIsOpen(true)}
-        className={`fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 group ${
-          isOpen ? 'scale-0 opacity-0' : 'scale-100 opacity-100'
+        className={`fixed bottom-6 right-6 z-50 w-16 h-16 rounded-2xl bg-[#111827] text-white shadow-2xl flex items-center justify-center transition-all duration-500 hover:scale-105 active:scale-95 group border border-gray-700/50 ${
+          isOpen ? 'scale-0 opacity-0 pointer-events-none' : 'scale-100 opacity-100'
         }`}
       >
-        <Sparkles size={24} className="group-hover:animate-pulse" />
+        <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/10 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
+        <Sparkles size={28} className="relative z-10 group-hover:text-indigo-400 transition-colors" />
       </button>
 
-      {/* Slide-over Chat Panel */}
+      {/* Floating Chat Window */}
       <div
-        className={`fixed inset-x-0 bottom-0 sm:inset-y-0 sm:right-0 z-50 w-full sm:max-w-[400px] h-[85vh] sm:h-full bg-white shadow-2xl transition-transform duration-500 ease-in-out transform rounded-t-[2.5rem] sm:rounded-t-none ${
+        className={`fixed bottom-6 right-6 z-50 w-[90vw] sm:w-[400px] max-h-[70vh] bg-white shadow-[0_32px_64px_-16px_rgba(0,0,0,0.2)] transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)] transform origin-bottom-right border border-gray-100 overflow-hidden flex flex-col rounded-[2rem] ${
           isOpen 
-            ? 'translate-y-0 sm:translate-x-0' 
-            : 'translate-y-full sm:translate-x-full'
+            ? 'scale-100 opacity-100 translate-y-0' 
+            : 'scale-75 opacity-0 translate-y-10 pointer-events-none'
         }`}
       >
-        <div className="flex flex-col h-full ring-1 ring-gray-100 overflow-hidden">
-          {/* Header */}
-          <div className="p-5 sm:p-6 bg-indigo-600 text-white flex items-center justify-between flex-shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30">
-                <Sparkles size={20} />
-              </div>
-              <div>
-                <h2 className="text-sm sm:text-base font-black tracking-tight leading-tight">LeadNova AI</h2>
-                <p className="text-[10px] font-bold text-indigo-100 uppercase tracking-widest mt-0.5 flex items-center gap-1">
-                   Aktif
-                </p>
-              </div>
+        {/* Header - Premium Dark */}
+        <div className="px-6 py-5 bg-[#111827] text-white flex items-center justify-between flex-shrink-0 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.1),transparent)]" />
+          <div className="flex items-center gap-3 relative z-10">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center border border-gray-600">
+              <Zap size={20} className="text-white" />
             </div>
-            <button 
-              onClick={() => setIsOpen(false)}
-              className="p-2 sm:p-2.5 hover:bg-white/10 rounded-xl transition-colors outline-none border border-white/20"
-            >
-              <X size={22} />
-            </button>
+            <div>
+              <h2 className="text-sm font-black tracking-tight flex items-center gap-2">
+                DANIŞMAN AI
+                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+              </h2>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">Kurumsal Asistan</p>
+            </div>
           </div>
-
-          {/* Messages Area */}
-          <div 
-            ref={scrollRef}
-            className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6 bg-gray-50/50 scroll-smooth"
+          <button 
+            onClick={() => setIsOpen(false)}
+            className="p-2 hover:bg-white/10 rounded-xl transition-all border border-white/5 relative z-10"
           >
-            {messages.map((m, idx) => (
-              <div 
-                key={idx} 
-                className={`flex gap-3 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}
-              >
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border ${
-                  m.role === 'user' 
-                    ? 'bg-white border-gray-100 text-gray-400' 
-                    : 'bg-indigo-600 border-indigo-500 text-white'
-                }`}>
-                  {m.role === 'user' ? <User size={16} /> : <Bot size={16} />}
-                </div>
-                <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
-                  m.role === 'user' 
-                    ? 'bg-indigo-600 text-white rounded-tr-none' 
-                    : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'
-                }`}>
-                  <div className="prose prose-sm prose-p:leading-relaxed">
-                    <ReactMarkdown>
-                      {m.content}
-                    </ReactMarkdown>
-                  </div>
-                </div>
-              </div>
-            ))}
-            {loading && (
-              <div className="flex gap-3 animate-pulse">
-                <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center">
-                  <Bot size={16} className="text-white" />
-                </div>
-                <div className="bg-white border border-gray-100 rounded-2xl px-4 py-3">
-                  <Loader2 size={16} className="animate-spin text-gray-400" />
-                </div>
-              </div>
-            )}
-          </div>
+            <X size={18} />
+          </button>
+        </div>
 
-          {/* Input Area */}
-          <div className="p-5 sm:p-6 bg-white border-t border-gray-100 space-y-4 flex-shrink-0">
-            <div className="flex overflow-x-auto gap-2 no-scrollbar">
-              {QUICK_ACTIONS.map((action) => (
-                <button
-                  key={action.id}
-                  onClick={() => handleSendMessage(action.prompt)}
-                  disabled={loading}
-                  className="flex items-center gap-2 px-4 py-2 rounded-full border border-gray-100 bg-gray-50 text-[10px] font-bold text-gray-500 hover:border-indigo-200 transition-all whitespace-nowrap"
-                >
-                  {action.icon}
-                  {action.label}
-                </button>
-              ))}
-            </div>
-
-            <form 
-              onSubmit={(e) => { e.preventDefault(); handleSendMessage(input); }}
-              className="relative"
+        {/* Messages Area */}
+        <div 
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto p-6 space-y-6 bg-white scroll-smooth min-h-[300px]"
+        >
+          {messages.map((m) => (
+            <div 
+              key={m.id} 
+              className={`flex gap-3 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}
             >
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Bir şeyler sor..."
-                disabled={loading}
-                className="w-full pl-4 pr-14 py-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/5 transition-all shadow-inner"
-              />
-              <button 
-                type="submit"
-                disabled={!input.trim() || loading}
-                className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-500/20"
-              >
-                <Send size={18} />
-              </button>
-            </form>
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border mt-1 ${
+                m.role === 'user' 
+                  ? 'bg-gray-50 border-gray-100 text-gray-400' 
+                  : 'bg-[#111827] border-gray-800 text-white shadow-lg shadow-gray-900/10'
+              }`}>
+                {m.role === 'user' ? <User size={14} /> : <Bot size={14} />}
+              </div>
+              <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm leading-relaxed ${
+                m.role === 'user' 
+                  ? 'bg-[#111827] text-white rounded-tr-none' 
+                  : 'bg-gray-50 text-gray-800 border border-gray-100 rounded-tl-none font-medium'
+              }`}>
+                <div className="prose prose-sm prose-p:leading-relaxed prose-strong:text-inherit">
+                  <ReactMarkdown>
+                    {m.parts
+                      ? m.parts
+                          .filter((p: any) => p.type === 'text')
+                          .map((p: any) => p.text)
+                          .join('')
+                      : ''}
+                  </ReactMarkdown>
+                </div>
+
+              </div>
+            </div>
+          ))}
+          {isLoading && (
+            <div className="flex gap-3">
+              <div className="w-8 h-8 rounded-lg bg-[#111827] flex items-center justify-center">
+                <Loader2 size={14} className="animate-spin text-white" />
+              </div>
+              <div className="bg-gray-50 border border-gray-100 rounded-2xl px-4 py-2 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                <span className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                <span className="w-1.5 h-1.5 bg-gray-300 rounded-full animate-bounce" />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Input Area */}
+        <div className="p-6 bg-white border-t border-gray-50 flex-shrink-0">
+          <form 
+            onSubmit={handleSubmit}
+            className="flex items-center gap-3"
+          >
+            <input
+              type="text"
+              value={input}
+              onChange={handleInputChange}
+              placeholder="Yöneticim, size nasıl yardımcı olabilirim?"
+              className="flex-1 px-4 py-3.5 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:bg-white focus:outline-none focus:ring-4 focus:ring-gray-100 transition-all font-medium placeholder:text-gray-400"
+            />
+            <button 
+              type="submit"
+              disabled={!input.trim() || isLoading}
+              className="w-12 h-12 flex items-center justify-center bg-[#111827] text-white rounded-xl shadow-lg shadow-gray-900/10 hover:scale-105 active:scale-95 transition-all disabled:bg-gray-200 disabled:shadow-none"
+            >
+              <ArrowRight size={18} />
+            </button>
+          </form>
+          <div className="mt-3 flex justify-center">
+            <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest">LeadNova AI Assistant</span>
           </div>
         </div>
       </div>

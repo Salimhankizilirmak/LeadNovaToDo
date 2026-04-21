@@ -1,62 +1,79 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { NextResponse } from "next/server";
+import { google } from "@ai-sdk/google";
+import { streamText, convertToModelMessages } from "ai";
+import { auth } from "@clerk/nextjs/server";
+import { db } from "@/db";
+import { projects, tasks, cells } from "@/db/schema";
+import { eq, and, sql } from "drizzle-orm";
 
-const apiKey = process.env.GEMINI_API_KEY;
-const genAI = new GoogleGenerativeAI(apiKey || "");
-
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-}
-
-interface ProjectContext {
-  name: string;
-  tasks: { title: string; status: string }[];
-}
+export const maxDuration = 30;
 
 export async function POST(req: Request) {
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "GEMINI_API_KEY eksik. Lütfen .env.local dosyasını kontrol edin." },
-      { status: 500 }
-    );
-  }
-
   try {
-    const { messages, contextData } = await req.json() as { messages: Message[], contextData: ProjectContext };
+    const { userId, orgId } = await auth();
+    if (!userId || !orgId) {
+      return new Response("Unauthorized", { status: 401 });
+    }
 
-    // Model ayarları (Flash modelini kullanıyoruz)
-    const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
-      systemInstruction: "Sen LeadNova'nın AI Proje Yöneticisisin. Sana JSON olarak verilen proje ve görev verilerini analiz et. Yanıtların her zaman ÇOK KISA, net ve madde imli (bullet points) olmalıdır. Asla uzun paragraflar yazma. Türkçe konuş. Profesyonel ama yardımsever bir ton kullan."
+    const { messages } = await req.json();
+
+    // ── Deep Context Retrieval (RAG Lite) ──
+    const allProjects = await db.query.projects.findMany({
+      where: eq(projects.orgId, orgId),
+      columns: { name: true, status: true, budget: true }
     });
 
-    // Chat başlatma
-    const chat = model.startChat({
-      history: messages.slice(0, -1).map((m: Message) => ({
-        role: m.role === "user" ? "user" : "model",
-        parts: [{ text: m.content }],
+    const allTasks = await db.query.tasks.findMany({
+      where: eq(tasks.orgId, orgId),
+      columns: { title: true, status: true, priority: true, dueDate: true }
+    });
+
+    const allCells = await db.query.cells.findMany({
+      where: eq(cells.orgId, orgId),
+      with: { members: true }
+    });
+
+    const contextSummary = {
+      organizasyon_id: orgId,
+      toplam_proje_sayisi: allProjects.length,
+      projeler: allProjects.map(p => ({
+        ad: p.name,
+        durum: p.status,
+        butce: `₺${((p.budget || 0) / 100).toLocaleString('tr-TR')}`
       })),
+      gorev_ozeti: {
+        toplam: allTasks.length,
+        tamamlanan: allTasks.filter(t => t.status === 'done').length,
+        kritik: allTasks.filter(t => t.priority === 'critical').length,
+      },
+      departmanlar: allCells.map(c => ({
+        ad: c.name,
+        personel_sayisi: c.members.length
+      }))
+    };
+
+    const systemPrompt = `
+      Sen LeadNova Yönetim Sisteminin Kurumsal Yapay Zeka Danışmanısın. 
+      Yöneticine "Sayın Yöneticim" veya "Efendim" şeklinde hitap etmelisin.
+      Yanıtların son derece resmi, saygılı, net ve tamamen Türkçe olmalıdır.
+      Kesinlikle laf kalabalığı yapma, verileri profesyonelce analiz et.
+      
+      BAĞLAM (SİSTEM VERİLERİ):
+      ${JSON.stringify(contextSummary, null, 2)}
+      
+      GÖREVİN:
+      Yöneticinin sorularına yukarıdaki verilere dayanarak rapor sunmak, projelerin sağlık durumunu (bütçe ve gecikme bazlı) yorumlamak ve operasyonel tavsiyeler vermektir.
+    `;
+
+    const result = streamText({
+      model: google("gemini-1.5-flash"),
+      system: systemPrompt,
+      messages: await convertToModelMessages(messages),
     });
 
-    // Son mesajı ve bağlamı gönder (Context, sistem mesajı gibi en başa eklenir veya son kullanıcı mesajıyla birleştirilir)
-    const lastUserMessage = messages[messages.length - 1].content;
-    const projectContext = contextData 
-      ? `\n\nBAĞLAM (Mevcut Proje Durumu):\n${JSON.stringify(contextData, null, 2)}`
-      : "";
 
-    const fullPrompt = `${lastUserMessage}${projectContext}`;
-
-    const result = await chat.sendMessage(fullPrompt);
-    const response = await result.response;
-    const text = response.text();
-
-    return NextResponse.json({ text });
+    return result.toTextStreamResponse();
   } catch (error) {
-    console.error("Gemini API Error:", error);
-    return NextResponse.json(
-      { error: "AI yanıt verirken bir hata oluştu." },
-      { status: 500 }
-    );
+    console.error("AI API Error:", error);
+    return new Response("AI yanıt verirken bir hata oluştu.", { status: 500 });
   }
 }

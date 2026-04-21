@@ -37,8 +37,10 @@ const schema = z.object({
   name: z.string().min(3, 'Proje adı en az 3 karakter olmalıdır').max(80),
   description: z.string().max(300).optional(),
   managerId: z.string().optional().nullable(),
+  budget: z.number().optional().nullable(),
 });
 type FormValues = z.infer<typeof schema>;
+
 
 /* ── Modal Bileşeni ─────────────────────────────────────────── */
 interface CreateProjectModalProps {
@@ -90,6 +92,7 @@ export default function CreateProjectModal({
         description: values.description,
         color: selectedColor,
         managerId: values.managerId || undefined,
+        budget: values.budget ? Math.round(values.budget * 100) : 0,
         attachment: attachment || undefined
       });
 
@@ -164,6 +167,23 @@ export default function CreateProjectModal({
             </select>
           </div>
 
+          {/* Bütçe (TRY) */}
+          <div className="space-y-2">
+            <label className="block text-sm font-semibold text-gray-700">
+               Proje Bütçesi (TRY)
+            </label>
+            <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-sm">₺</span>
+                <input
+                    type="number"
+                    {...register('budget', { valueAsNumber: true })}
+                    placeholder="Örn: 1.500.000"
+                    className="w-full pl-8 pr-4 py-3 text-sm rounded-xl border border-gray-100 bg-gray-50 text-gray-900 placeholder-gray-300 outline-none focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/5 transition-all font-bold"
+                />
+            </div>
+            <p className="text-[10px] text-gray-400 font-medium ml-1 italic">* AI asistanı maliyet analizleri için bu veriyi kullanacaktır.</p>
+          </div>
+
           {/* Açıklama */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1.5">
@@ -174,7 +194,7 @@ export default function CreateProjectModal({
               {...register('description')}
               rows={3}
               placeholder="Bu proje hakkında kısa bir açıklama..."
-              className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 bg-gray-50 text-gray-900 placeholder-gray-400 outline-none focus:border-indigo-400 focus:bg-white transition-colors resize-none"
+              className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 bg-gray-50 text-gray-900 placeholder-gray-300 outline-none focus:border-indigo-400 focus:bg-white transition-colors resize-none"
             />
           </div>
 

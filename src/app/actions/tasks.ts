@@ -79,18 +79,20 @@ export async function createTaskAction(params: CreateTaskParams) {
           const toEmail = assigneeUser.emailAddresses[0]?.emailAddress;
           
           if (toEmail) {
-            await sendTaskAssignmentEmail(
+            // Arka planda çalıştır (kullanıcıyı bekletme)
+            sendTaskAssignmentEmail(
               toEmail,
               task.title,
               project?.name || 'Bilinmeyen Proje',
-              user.firstName || user.emailAddresses[0].emailAddress
-            );
+              assigneeUser.fullName || assigneeUser.username || 'Değerli Takım Arkadaşımız'
+            ).catch(err => console.error("EMAIL ASYNC ERROR:", err));
           }
         }
       } catch (emailError: any) {
         console.error('[DEBUG] Bildirim gönderilirken hata oluştu:', emailError.message);
       }
     }
+
 
     return { success: true, task: { ...task, project } };
   } catch (globalError: any) {

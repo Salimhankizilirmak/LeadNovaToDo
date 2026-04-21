@@ -54,8 +54,10 @@ export const projects = sqliteTable('projects', {
   orgId: text('org_id').notNull().references(() => organizations.id),
   createdBy: text('created_by').notNull().references(() => profiles.id),
   managerId: text('manager_id').references(() => profiles.id),
+  budget: integer('budget').default(0), // Kuruş cinsinden bütçe (TRY)
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
 });
+
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
   organization: one(organizations, {
