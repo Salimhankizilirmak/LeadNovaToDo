@@ -1,4 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import { NextResponse } from 'next/server';
 
 /**
  * Korumalı rotalar — giriş yapılmamışsa Clerk otomatik olarak
@@ -14,8 +15,15 @@ const isAdminRoute = createRouteMatcher([
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
+  // Anasayfaya yönlendirme kontrolü
+  const { userId } = await auth();
+  if (userId && req.nextUrl.pathname === '/') {
+    return NextResponse.redirect(new URL('/dashboard', req.url));
+  }
+
   // 1. Admin Rotası Kontrolü (Sadece giriş yapmış olmayı zorunlu tutar)
   if (isAdminRoute(req)) {
+
     await auth.protect();
   }
 

@@ -39,6 +39,13 @@ interface Block {
   tasks: Task[];
 }
 
+interface Project {
+  id: string;
+  name: string;
+  color: string;
+  tasks: Task[];
+}
+
 interface Cell {
   id: string;
   name: string;
@@ -46,6 +53,7 @@ interface Cell {
   createdAt: string;
   member_count?: number;
   blocks: Block[];
+  projects: Project[]; // Yeni: Hücreye atanmış projeler
   task_stats?: {
     total: number;
     active: number;
@@ -359,55 +367,86 @@ export default function CellsView({ initialCells }: { initialCells: Cell[] }) {
                     </div>
 
                     {/* Detailed Monitor View */}
-                    <div className="md:col-span-3">
-                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
-                          {selectedCell.blocks.map(block => (
-                             <div key={block.id} className="bg-white border border-gray-100 rounded-[2.5rem] p-8 shadow-sm hover:shadow-xl transition-all">
-                                <div className="flex items-center justify-between mb-8">
-                                   <div className="flex items-center gap-3">
-                                      <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 font-black">
-                                         {block.name.charAt(0)}
-                                      </div>
-                                      <h5 className="text-xl font-black text-gray-900 tracking-tight">{block.name}</h5>
-                                   </div>
-                                   <div className="flex items-center gap-2">
-                                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">ÇALIŞIYOR</span>
-                                   </div>
-                                </div>
+                     <div className="md:col-span-3 space-y-12">
+                        {/* İstasyonlar (Bloklar) */}
+                        <section>
+                           <h4 className="text-sm font-black text-gray-900 uppercase tracking-widest mb-6 flex items-center gap-2">
+                              <Activity size={18} className="text-indigo-600" />
+                              İstasyon Bazlı Takip
+                           </h4>
+                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+                              {selectedCell.blocks.map(block => (
+                                 <div key={block.id} className="bg-white border border-gray-100 rounded-[2.5rem] p-8 shadow-sm hover:shadow-xl transition-all">
+                                    <div className="flex items-center justify-between mb-8">
+                                       <div className="flex items-center gap-3">
+                                          <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 font-black">
+                                             {block.name.charAt(0)}
+                                          </div>
+                                          <h5 className="text-xl font-black text-gray-900 tracking-tight">{block.name}</h5>
+                                       </div>
+                                       <div className="flex items-center gap-2">
+                                          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                          <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">ÇALIŞIYOR</span>
+                                       </div>
+                                    </div>
 
-                                <div className="space-y-4">
-                                   {block.tasks.map(task => (
-                                      <div key={task.id} className="p-6 bg-gray-50 rounded-3xl border border-gray-50 flex items-center justify-between group hover:bg-white hover:border-indigo-100 transition-all cursor-pointer">
-                                         <div className="flex items-center gap-4">
-                                            <div className={`w-3 h-3 rounded-full ${getPriorityColor(task.priority)} shadow-lg shadow-indigo-100`} />
-                                            <div>
-                                               <p className="text-sm font-black text-gray-900 group-hover:text-indigo-600 transition-colors">{task.title}</p>
-                                               <p className="text-[10px] font-bold text-gray-400 uppercase mt-1">Sorumlu: {task.assignee?.fullName || 'Genel'}</p>
-                                            </div>
+                                    <div className="space-y-4">
+                                       {block.tasks.map(task => (
+                                          <div key={task.id} className="p-6 bg-gray-50 rounded-3xl border border-gray-50 flex items-center justify-between group hover:bg-white hover:border-indigo-100 transition-all cursor-pointer">
+                                             <div className="flex items-center gap-4">
+                                                <div className={`w-3 h-3 rounded-full ${getPriorityColor(task.priority)} shadow-lg shadow-indigo-100`} />
+                                                <div>
+                                                   <p className="text-sm font-black text-gray-900 group-hover:text-indigo-600 transition-colors">{task.title}</p>
+                                                   <p className="text-[10px] font-bold text-gray-400 uppercase mt-1">Sorumlu: {task.assignee?.fullName || 'Genel'}</p>
+                                                </div>
+                                             </div>
+                                          </div>
+                                       ))}
+                                       {block.tasks.length === 0 && (
+                                         <div className="py-10 border-2 border-dashed border-gray-100 rounded-[2rem] flex flex-col items-center justify-center">
+                                            <Activity size={24} className="text-gray-100 mb-2" />
+                                            <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest">İSTASYON BOŞTA</p>
                                          </div>
-                                         <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-2xl bg-white border border-gray-100 flex items-center justify-center overflow-hidden">
-                                               {task.assignee?.avatarUrl ? (
-                                                  <img src={task.assignee.avatarUrl} alt="" className="w-full h-full object-cover" />
-                                               ) : (
-                                                  <User size={16} className="text-gray-200" />
-                                               )}
-                                            </div>
-                                         </div>
-                                      </div>
-                                   ))}
-                                   {block.tasks.length === 0 && (
-                                     <div className="py-10 border-2 border-dashed border-gray-100 rounded-[2rem] flex flex-col items-center justify-center">
-                                        <Activity size={24} className="text-gray-100 mb-2" />
-                                        <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest">İSTASYON BOŞTA</p>
-                                     </div>
-                                   )}
-                                </div>
-                             </div>
-                          ))}
-                       </div>
-                    </div>
+                                       )}
+                                    </div>
+                                 </div>
+                              ))}
+                           </div>
+                        </section>
+
+                        {/* Hücredeki Aktif Projeler */}
+                        <section>
+                           <h4 className="text-sm font-black text-gray-900 uppercase tracking-widest mb-6 flex items-center gap-2">
+                              <ClipboardList size={18} className="text-indigo-600" />
+                              Hücredeki Aktif Projeler
+                           </h4>
+                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+                              {selectedCell.projects && selectedCell.projects.length > 0 ? selectedCell.projects.map(project => (
+                                 <div key={project.id} className="bg-white border-l-8 border border-gray-100 rounded-[2.5rem] p-8 shadow-sm hover:shadow-xl transition-all" style={{ borderLeftColor: project.color }}>
+                                    <h5 className="text-xl font-black text-gray-900 mb-4">{project.name}</h5>
+                                    <div className="space-y-3">
+                                       {project.tasks && project.tasks.length > 0 ? project.tasks.map(task => (
+                                          <div key={task.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
+                                             <span className="text-xs font-bold text-gray-700">{task.title}</span>
+                                             <div className="flex items-center gap-2">
+                                                <div className={`w-2 h-2 rounded-full ${getPriorityColor(task.priority)}`} />
+                                                <span className="text-[10px] font-black text-gray-400 uppercase">{task.priority}</span>
+                                             </div>
+                                          </div>
+                                       )) : (
+                                          <p className="text-xs text-gray-400 italic">Bu projede aktif görev yok.</p>
+                                       )}
+                                    </div>
+                                 </div>
+                              )) : (
+                                 <div className="md:col-span-2 py-16 flex flex-col items-center justify-center border-2 border-dashed border-gray-100 rounded-[3rem]">
+                                    <ClipboardList size={42} className="text-gray-100 mb-4" />
+                                    <p className="text-sm font-black text-gray-300 uppercase tracking-widest text-center">Bu hücreye atanmış bir proje bulunmamaktadır.</p>
+                                 </div>
+                              )}
+                           </div>
+                        </section>
+                     </div>
                  </div>
               </div>
            </div>

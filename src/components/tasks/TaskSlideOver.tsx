@@ -1,11 +1,11 @@
-'use client';
-
-import { useState } from 'react';
-import { X, Calendar, Type, AlignLeft, Flag, Save, Trash2, Loader2, User as UserIcon } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, Calendar, Type, AlignLeft, Flag, Save, Trash2, Loader2, User as UserIcon, History } from 'lucide-react';
 import { toast } from 'sonner';
 import { Task, Member } from '@/types/task';
 import TaskAttachments from './TaskAttachments';
-import { updateTaskStatusAction } from '@/app/actions/tasks';
+import { updateTaskStatusAction, getTaskHistoryAction } from '@/app/actions/tasks';
+import { formatDistanceToNow, format } from 'date-fns';
+import { tr } from 'date-fns/locale';
 
 /* ── Props ──────────────────────────────────────────────────── */
 interface TaskSlideOverProps {
@@ -32,18 +32,48 @@ export default function TaskSlideOver({
   const [assigneeId, setAssigneeId] = useState<string | null>(task?.assigneeId || null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [history, setHistory] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  // Görev değiştiğinde (veya açıldığında) geçmişi yükle
+  useEffect(() => {
+    async function loadHistory() {
+      if (!task?.id) return;
+      setLoadingHistory(true);
+      const res = await getTaskHistoryAction(task.id);
+      if (res.success && res.history) {
+        setHistory(res.history);
+      }
+      setLoadingHistory(false);
+    }
+
+    if (isOpen && task?.id) {
+        loadHistory();
+        // Reset local states
+        setTitle(task.title || '');
+        setDescription(task.description || '');
+        setPriority((task.priority as Task['priority']) || 'medium');
+        setDueDate(task.dueDate ? task.dueDate.substring(0, 10) : '');
+        setAssigneeId(task.assigneeId || null);
+    }
+  }, [task?.id, isOpen]);
 
   if (!task) return null;
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+        case 'todo': return 'Yapılacak';
+        case 'in_progress': return 'Devam Ediyor';
+        case 'review': return 'İncelemede';
+        case 'done': return 'Tamamlandı';
+        default: return status;
+    }
+  };
 
   const handleSave = async (specificAssigneeId?: string | null) => {
     setSaving(true);
     try {
-      // Drizzle + Action tabanlı güncelleme
       const result = await updateTaskStatusAction(task.id, task.status);
-      
-      // Not: Şu an sadece status güncelleyen bir action var, 
-      // tam güncelleme için updateTaskAction yazılmalı.
-      // Şimdilik mevcut action'ları uyumlu hale getiriyorum.
       
       if (!result.success) throw new Error(result.error);
 
@@ -130,7 +160,7 @@ export default function TaskSlideOver({
               <textarea
                 value={description || ''}
                 onChange={(e) => setDescription(e.target.value)}
-                rows={6}
+                rows={4}
                 className="w-full text-sm text-gray-600 border border-gray-100 rounded-xl p-4 bg-gray-50/50 focus:bg-white focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/5 transition-all outline-none resize-none placeholder-gray-300"
                 placeholder="Daha fazla detay ekleyin..."
               />
@@ -190,6 +220,41 @@ export default function TaskSlideOver({
             <div className="pt-4 border-t border-gray-50">
                <TaskAttachments taskId={task.id} initialAttachments={task.attachments} />
             </div>
+
+            {/* Görev Geçmişi (Audit Logs) Section */}
+            <div className="pt-8 border-t border-gray-50 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-gray-400">
+                  <History size={16} />
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Görev Geçmişi</span>
+                </div>
+                {loadingHistory && <Loader2 size={12} className="animate-spin text-indigo-500" />}
+              </div>
+
+              <div className="space-y-4 relative before:absolute before:left-[9px] before:top-2 before:bottom-2 before:w-[1px] before:bg-gray-100">
+                {history.length > 0 ? history.map((log, idx) => (
+                  <div key={log.id} className="relative pl-7 animate-in fade-in slide-in-from-left-2 transition-all duration-300" style={{ animationDelay: `${idx * 50}ms` }}>
+                    <div className="absolute left-0 top-1.5 w-[19px] h-[19px] rounded-full bg-white border-2 border-indigo-500 flex items-center justify-center z-10">
+                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                    </div>
+                    <div className="bg-gray-50/50 rounded-2xl p-4 border border-gray-50 hover:bg-white hover:border-indigo-100 transition-all">
+                        <p className="text-xs font-bold text-gray-900 leading-normal">
+                            <span className="text-indigo-600">@{log.user?.fullName.split(' ')[0]}</span>, 
+                            durumu <span className="text-gray-400 line-through mx-1">{getStatusLabel(log.oldStatus)}</span> 
+                            dan <span className="text-emerald-600 font-black">{getStatusLabel(log.newStatus)}</span> durumuna çekti.
+                        </p>
+                        <p className="text-[9px] text-gray-400 font-bold mt-2 uppercase tracking-tighter">
+                            {log.createdAt ? formatDistanceToNow(new Date(log.createdAt), { addSuffix: true, locale: tr }) : ''}
+                            <span className="mx-1">•</span>
+                            {log.createdAt ? format(new Date(log.createdAt), 'HH:mm', { locale: tr }) : ''}
+                        </p>
+                    </div>
+                  </div>
+                )) : !loadingHistory && (
+                  <p className="text-[10px] text-gray-400 italic px-2">Henüz bir hareket kaydı bulunmuyor.</p>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="p-4 sm:p-6 bg-gray-50/80 border-t border-gray-100 flex items-center gap-3 flex-shrink-0">
@@ -214,3 +279,4 @@ export default function TaskSlideOver({
     </>
   );
 }
+

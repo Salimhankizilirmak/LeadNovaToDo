@@ -2,7 +2,7 @@
 
 import { auth, currentUser, clerkClient } from '@clerk/nextjs/server';
 import { db } from '@/db';
-import { tasks, projects, profiles, taskAttachments } from '@/db/schema';
+import { tasks, projects, profiles, taskAttachments, taskHistory } from '@/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { sendTaskAssignmentEmail } from '@/lib/email';
 
@@ -110,6 +110,18 @@ export async function updateTaskStatusAction(taskId: string, newStatus: string) 
   try {
     const { userId, orgId } = await auth();
     if (!userId || !orgId) return { success: false, error: 'Oturum açılmamış.' };
+    const user = await currentUser();
+    if (!user) return { success: false, error: 'Kullanıcı profili bulunamadı.' };
+
+    // 0. Eski statüyü al (Geçmiş için)
+    const existingTask = await db.query.tasks.findFirst({
+        where: and(eq(tasks.id, taskId), eq(tasks.orgId, orgId)),
+        columns: { status: true }
+    });
+
+    if (!existingTask) {
+        return { success: false, error: 'Görev bulunamadı.' };
+    }
 
     // Güvenlik: Sadece kendi organizasyonundaki görevi güncelleyebilir
     const [updatedTask] = await db.update(tasks)
@@ -126,11 +138,43 @@ export async function updateTaskStatusAction(taskId: string, newStatus: string) 
       return { success: false, error: 'Görev bulunamadı veya yetkiniz yok.' };
     }
 
+    // 1. Geçmişe (Logs) kaydet
+    await db.insert(taskHistory).values({
+        id: crypto.randomUUID(),
+        taskId,
+        changedBy: userId,
+        oldStatus: existingTask.status,
+        newStatus: newStatus as any
+    });
+
     return { success: true, task: updatedTask };
   } catch (err: any) {
     console.error('Görev Statü Güncelleme Hatası:', err);
     return { success: false, error: err.message };
   }
+}
+
+/**
+ * Bir görevin tüm değişim geçmişini getirir.
+ */
+export async function getTaskHistoryAction(taskId: string) {
+    try {
+        const { userId, orgId } = await auth();
+        if (!userId || !orgId) return { success: false, error: 'Oturum bulunamadı.' };
+
+        const history = await db.query.taskHistory.findMany({
+            where: eq(taskHistory.taskId, taskId),
+            with: {
+                user: true
+            },
+            orderBy: [desc(taskHistory.createdAt)]
+        });
+
+        return { success: true, history };
+    } catch (err: any) {
+        console.error('GEÇMİŞ GETİRİLEMEDİ:', err);
+        return { success: false, error: err.message };
+    }
 }
 
 /**

@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { toast } from 'sonner';
 import { X, Loader2, FolderPlus, Paperclip, FileCheck } from 'lucide-react';
 import { useUser, useOrganization } from '@clerk/nextjs';
-import { createProjectAction, getOrgMembersAction } from '@/app/actions/projects';
+import { createProjectAction, getOrgMembersAction, getCellsAction } from '@/app/actions/projects';
 import { UploadButton } from '@/utils/uploadthing';
 
 
@@ -37,6 +37,7 @@ const schema = z.object({
   name: z.string().min(3, 'Proje adı en az 3 karakter olmalıdır').max(80),
   description: z.string().max(300).optional(),
   managerId: z.string().optional().nullable(),
+  cellId: z.string().min(1, 'Lütfen bir departman/hücre seçiniz'), // Zorunlu
   budget: z.number().optional().nullable(),
 });
 type FormValues = z.infer<typeof schema>;
@@ -57,6 +58,7 @@ export default function CreateProjectModal({
   const [selectedColor, setSelectedColor] = useState(COLOR_OPTIONS[0].hex);
   const [submitting, setSubmitting] = useState(false);
   const [members, setMembers] = useState<any[]>([]);
+  const [cells, setCells] = useState<any[]>([]);
   const [attachment, setAttachment] = useState<{ url: string, name: string, size?: number, type?: string } | null>(null);
 
 
@@ -67,19 +69,27 @@ export default function CreateProjectModal({
   } = useForm<FormValues>({ 
     resolver: zodResolver(schema),
     defaultValues: {
-      managerId: null
+      managerId: null,
+      cellId: ''
     }
   });
 
-  // Üyeleri yükle
+  // Üyeleri ve Hücreleri yükle
   useEffect(() => {
-    async function loadMembers() {
-      const result = await getOrgMembersAction();
-      if (result.success && result.members) {
-        setMembers(result.members);
+    async function loadData() {
+      const [membersRes, cellsRes] = await Promise.all([
+        getOrgMembersAction(),
+        getCellsAction()
+      ]);
+      
+      if (membersRes.success && membersRes.members) {
+        setMembers(membersRes.members);
+      }
+      if (cellsRes.success && cellsRes.cells) {
+        setCells(cellsRes.cells);
       }
     }
-    if (userId) loadMembers();
+    if (userId) loadData();
   }, [userId]);
 
   const onSubmit = async (values: FormValues) => {
@@ -92,6 +102,7 @@ export default function CreateProjectModal({
         description: values.description,
         color: selectedColor,
         managerId: values.managerId || undefined,
+        cellId: values.cellId,
         budget: values.budget ? Math.round(values.budget * 100) : 0,
         attachment: attachment || undefined
       });
@@ -129,7 +140,7 @@ export default function CreateProjectModal({
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-5">
+        <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-5 h-[70vh] overflow-y-auto">
           {/* Proje Adı */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1.5">
@@ -146,6 +157,29 @@ export default function CreateProjectModal({
             />
             {errors.name && (
               <p className="text-xs text-red-500 mt-1">{errors.name.message}</p>
+            )}
+          </div>
+
+          {/* Bağlı Hücre/Departman */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+              Bağlı Olduğu Departman (Hücre) <span className="text-red-500">*</span>
+            </label>
+            <select
+              {...register('cellId')}
+              className={`w-full px-4 py-2.5 text-sm rounded-xl border bg-gray-50 text-gray-900 outline-none transition-colors focus:bg-white cursor-pointer ${
+                errors.cellId ? 'border-red-400' : 'border-gray-200 focus:border-indigo-400'
+              }`}
+            >
+              <option value="">Hücre seçiniz...</option>
+              {cells.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            {errors.cellId && (
+              <p className="text-xs text-red-500 mt-1">{errors.cellId.message}</p>
             )}
           </div>
 
@@ -183,6 +217,7 @@ export default function CreateProjectModal({
             </div>
             <p className="text-[10px] text-gray-400 font-medium ml-1 italic">* AI asistanı maliyet analizleri için bu veriyi kullanacaktır.</p>
           </div>
+
 
           {/* Açıklama */}
           <div>

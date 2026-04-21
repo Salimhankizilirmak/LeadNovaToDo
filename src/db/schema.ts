@@ -52,6 +52,7 @@ export const projects = sqliteTable('projects', {
   color: text('color').notNull().default('#6366F1'),
   status: text('status').notNull().default('active'),
   orgId: text('org_id').notNull().references(() => organizations.id),
+  cellId: text('cell_id').references(() => cells.id), // Projenin bağlı olduğu Hücre/Departman
   createdBy: text('created_by').notNull().references(() => profiles.id),
   managerId: text('manager_id').references(() => profiles.id),
   budget: integer('budget').default(0), // Kuruş cinsinden bütçe (TRY)
@@ -63,6 +64,10 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   organization: one(organizations, {
     fields: [projects.orgId],
     references: [organizations.id],
+  }),
+  cell: one(cells, {
+    fields: [projects.cellId],
+    references: [cells.id],
   }),
   creator: one(profiles, {
     fields: [projects.createdBy],
@@ -139,6 +144,28 @@ export const taskAttachmentsRelations = relations(taskAttachments, ({ one }) => 
   }),
 }));
 
+
+// 4b. Görev Geçmişi (Audit Logs)
+export const taskHistory = sqliteTable('task_history', {
+  id: text('id').primaryKey(),
+  taskId: text('task_id').notNull().references(() => tasks.id),
+  changedBy: text('changed_by').notNull().references(() => profiles.id),
+  oldStatus: text('old_status'),
+  newStatus: text('new_status').notNull(),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const taskHistoryRelations = relations(taskHistory, ({ one }) => ({
+  task: one(tasks, {
+    fields: [taskHistory.taskId],
+    references: [tasks.id],
+  }),
+  user: one(profiles, {
+    fields: [taskHistory.changedBy],
+    references: [profiles.id],
+  }),
+}));
+
 // 5. Hücreler (Departmanlar)
 export const cells = sqliteTable('cells', {
   id: text('id').primaryKey(),
@@ -155,6 +182,7 @@ export const cellsRelations = relations(cells, ({ one, many }) => ({
   }),
   members: many(cellMembers),
   blocks: many(blocks),
+  projects: many(projects),
 }));
 
 // 6. Hücre Üyeleri (Çoktan Çoka İlişki)

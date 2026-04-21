@@ -105,7 +105,12 @@ export default function ProjectChatRoom({ projectId }: ProjectChatRoomProps) {
                 <div className={`flex items-center gap-2 text-[9px] font-bold text-gray-400 uppercase tracking-widest ${isMe ? 'flex-row-reverse' : ''}`}>
                   <span>{msg.user?.fullName?.split(' ')[0] || 'Kullanıcı'}</span>
                   <span className="w-1 h-1 bg-gray-200 rounded-full" />
-                  <span>{formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true, locale: tr })}</span>
+                  <span className="text-indigo-400">
+                    {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true, locale: tr })}
+                  </span>
+                  <span className="opacity-50">
+                    ({new Date(msg.createdAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })})
+                  </span>
                 </div>
               </div>
             </div>

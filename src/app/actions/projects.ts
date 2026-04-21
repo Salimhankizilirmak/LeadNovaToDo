@@ -93,7 +93,8 @@ export async function getProjectAction(projectId: string) {
             attachments: true
           }
         },
-        attachments: true
+        attachments: true,
+        cell: true
       }
     });
 
@@ -138,6 +139,7 @@ export async function createProjectAction(params: {
   color?: string,
   managerId?: string,
   budget?: number,
+  cellId?: string, // Yeni: Hücre ID
   attachment?: { url: string, name: string, size?: number, type?: string }
 }) {
 
@@ -152,6 +154,7 @@ export async function createProjectAction(params: {
       description: params.description,
       color: params.color,
       orgId: orgId,
+      cellId: params.cellId, // Hücre ataması
       createdBy: userId,
       managerId: params.managerId || userId,
       budget: params.budget || 0,
@@ -220,9 +223,20 @@ export async function getCellsAction() {
               }
             }
           }
+        },
+        projects: {
+          with: {
+            tasks: {
+              where: (tasks, { ne }) => ne(tasks.status, 'done'),
+              with: {
+                assignee: true
+              }
+            }
+          }
         }
       }
     });
+
 
     // Verileri zenginleştir (istatistikler ve blok verileri)
     const enrichedCells = cellsWithStats.map(cell => {
