@@ -65,6 +65,7 @@ interface Cell {
   description: string | null;
   createdAt: string;
   member_count?: number;
+  members?: any[]; // Yeni: Hücre personeli listesi
   blocks: Block[];
   projects: Project[]; // Yeni: Hücreye atanmış projeler
   task_stats?: {
