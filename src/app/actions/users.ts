@@ -30,6 +30,7 @@ export async function syncProfile() {
     let targetOrgId = orgId;
     let finalRole: UserRole = 'Personel';
     let isAuthorized = false;
+    let membershipRole: UserRole | null = null;
 
     // 2a. Eğer Kullanıcı bir Patron ise (Email bazlı)
     if (ownedOrgByEmail) {
@@ -51,10 +52,16 @@ export async function syncProfile() {
       const memberships = await clerk.users.getOrganizationMembershipList({ userId });
       if (memberships.data && memberships.data.length > 0) {
         targetOrgId = memberships.data[0].organization.id;
+        membershipRole = memberships.data[0].publicMetadata?.role as UserRole | null;
         isAuthorized = true;
       }
     } else {
-      isAuthorized = true; 
+      isAuthorized = true;
+      const memberships = await clerk.users.getOrganizationMembershipList({ userId });
+      const currentOrgMembership = memberships.data.find(m => m.organization.id === targetOrgId);
+      if (currentOrgMembership) {
+        membershipRole = currentOrgMembership.publicMetadata?.role as UserRole | null;
+      }
     }
 
     // 4. Organizations Tablosunu Güncelle ve OwnerID Kontrolü Yap
@@ -95,7 +102,7 @@ export async function syncProfile() {
 
     // Rol Belirleme Mantığı (Eğer Patron değilse metadata veya mevcut profil bak)
     if (finalRole !== 'Patron') {
-      finalRole = (user.publicMetadata?.role as UserRole) || (existingProfile?.role as UserRole) || 'Personel';
+      finalRole = membershipRole || (user.publicMetadata?.role as UserRole) || (existingProfile?.role as UserRole) || 'Personel';
     }
 
     // Ekstra Kontrol: Veritabanındaki organizasyon kaydıyla ownerId eşleşiyorsa Patron yap
@@ -133,6 +140,10 @@ export async function syncProfile() {
     if (finalRole === 'Patron' && user.publicMetadata?.role !== 'Patron') {
       await clerk.users.updateUserMetadata(userId, {
         publicMetadata: { role: 'Patron' }
+      });
+    } else if (finalRole !== 'Patron' && membershipRole && user.publicMetadata?.role !== membershipRole) {
+      await clerk.users.updateUserMetadata(userId, {
+        publicMetadata: { role: membershipRole }
       });
     }
 

@@ -1,3 +1,5 @@
+'use server';
+
 import { db } from '@/db';
 import { cellMembers, profiles, cells } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';

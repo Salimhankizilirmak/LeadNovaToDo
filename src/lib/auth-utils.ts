@@ -1,21 +1,11 @@
+import 'server-only';
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { db } from '@/db';
 import { profiles, cellMembers } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
+import { type LeadNovaRole, isBoss } from './auth-constants';
 
-/**
- * LeadNova Yetki Hiyerarşisi
- */
-export type LeadNovaRole = 'Patron' | 'Genel Müdür' | 'Admin' | 'Proje Yöneticisi' | 'Vardiya Amiri' | 'Personel';
-
-export const ROLE_HIERARCHY: Record<LeadNovaRole, number> = {
-  'Patron': 100,
-  'Genel Müdür': 90,
-  'Admin': 80,
-  'Vardiya Amiri': 50,
-  'Proje Yöneticisi': 40,
-  'Personel': 10
-};
+export { type LeadNovaRole, isBoss };
 
 /**
  * Kullanıcının mevcut rolünü ve organizasyon bilgisini döner.
@@ -29,13 +19,6 @@ export async function getAuthContext() {
   const role = (user.publicMetadata?.role as LeadNovaRole) || 'Personel';
   
   return { userId, orgId, role };
-}
-
-/**
- * Patron, GM veya Admin olup olmadığını kontrol eder.
- */
-export function isBoss(role: string) {
-  return ['Patron', 'Genel Müdür', 'Admin'].includes(role);
 }
 
 /**
@@ -66,7 +49,7 @@ export async function getSupervisedCellIds(userId: string) {
 }
 
 /**
- * Projeye erişim yetkisi var mı?
+ * Projeye erişim yetkisi var mı? (Server-side)
  */
 export function canAccessProject(userId: string, role: LeadNovaRole, project: any, supervisedCellIds: string[] = []) {
   if (isBoss(role)) return true;
@@ -78,6 +61,6 @@ export function canAccessProject(userId: string, role: LeadNovaRole, project: an
   
   if (role === 'Proje Yöneticisi' && project.managerId === userId) return true;
   
-  // Personel veya PM: Eğer projede bir görevi varsa görebilir (Bu mantık Action içinde DB query ile optimize edilecek)
   return false; 
 }
+

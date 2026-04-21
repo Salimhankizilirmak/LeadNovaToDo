@@ -40,6 +40,7 @@ export const profilesRelations = relations(profiles, ({ one, many }) => ({
   assignedTasks: many(tasks, { relationName: 'assignee' }),
   createdTasks: many(tasks, { relationName: 'creator' }),
   managedProjects: many(projects, { relationName: 'manager' }),
+  projectManagers: many(projectManagers),
   projectMessages: many(projectMessages),
 }));
 
@@ -54,11 +55,28 @@ export const projects = sqliteTable('projects', {
   orgId: text('org_id').notNull().references(() => organizations.id),
   cellId: text('cell_id').references(() => cells.id), // Projenin bağlı olduğu Hücre/Departman
   createdBy: text('created_by').notNull().references(() => profiles.id),
-  managerId: text('manager_id').references(() => profiles.id),
+  managerId: text('manager_id').references(() => profiles.id), // Opsiyonel (Geriye dönük uyumluluk için, yakında kaldırılabilir)
   budget: integer('budget').default(0), // Kuruş cinsinden bütçe (TRY)
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const projectManagers = sqliteTable('project_managers', {
+  projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  managerId: text('manager_id').notNull().references(() => profiles.id, { onDelete: 'cascade' }),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.projectId, t.managerId] })
+}));
+
+export const projectManagersRelations = relations(projectManagers, ({ one }) => ({
+  project: one(projects, {
+    fields: [projectManagers.projectId],
+    references: [projects.id],
+  }),
+  manager: one(profiles, {
+    fields: [projectManagers.managerId],
+    references: [profiles.id],
+  }),
+}));
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
   organization: one(organizations, {
@@ -72,12 +90,15 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   creator: one(profiles, {
     fields: [projects.createdBy],
     references: [profiles.id],
+    relationName: 'creator',
   }),
   manager: one(profiles, {
     fields: [projects.managerId],
     references: [profiles.id],
+    relationName: 'manager',
   }),
   tasks: many(tasks),
+  managers: many(projectManagers),
   messages: many(projectMessages),
   attachments: many(projectAttachments),
 }));

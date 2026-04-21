@@ -1,6 +1,10 @@
-import { projects, tasks, profiles, cells, cellMembers, projectAttachments, blocks } from '@/db/schema';
+'use server';
+
+import { db } from '@/db';
+import { auth, currentUser, clerkClient } from '@clerk/nextjs/server';
+import { projects, tasks, profiles, cells, cellMembers, projectAttachments, blocks, projectManagers } from '@/db/schema';
 import { eq, and, desc, or, sql, inArray } from 'drizzle-orm';
-import { sendProjectAttachmentNotificationEmail } from '@/lib/email';
+import { sendProjectAttachmentNotificationEmail, sendTaskAssignmentEmail } from '@/lib/email';
 import { getAuthContext, isBoss, getSupervisedCellIds } from '@/lib/auth-utils';
 
 
@@ -20,7 +24,7 @@ export async function getProjectsAction(limit = 20) {
         where: eq(projects.orgId, orgId),
         limit: limit,
         orderBy: [desc(projects.createdAt)],
-        with: { manager: true, creator: true }
+        with: { managers: { with: { manager: true } }, creator: true }
       });
     } else if (role === 'Vardiya Amiri') {
       const cellIds = await getSupervisedCellIds(userId);
@@ -33,18 +37,20 @@ export async function getProjectsAction(limit = 20) {
         ),
         limit: limit,
         orderBy: [desc(projects.createdAt)],
-        with: { manager: true, creator: true }
+        with: { managers: { with: { manager: true } }, creator: true }
       });
     } else {
-      // PM ve Personel: SADECE manager olduğu veya kendisine görev atandığı projeleri gör
+      // PM ve Personel: SADECE manager (project_managers) olduğu veya kendisine görev atandığı projeleri gör
       const involved = await db.selectDistinct({ id: projects.id })
         .from(projects)
         .leftJoin(tasks, eq(projects.id, tasks.projectId))
+        .leftJoin(projectManagers, eq(projects.id, projectManagers.projectId))
         .where(
           and(
             eq(projects.orgId, orgId),
             or(
-              eq(projects.managerId, userId),
+              eq(projects.managerId, userId), // Geriye dönük uyumluluk
+              eq(projectManagers.managerId, userId),
               eq(tasks.assigneeId, userId)
             )
           )
@@ -57,7 +63,7 @@ export async function getProjectsAction(limit = 20) {
         where: inArray(projects.id, projectIds),
         limit: limit,
         orderBy: [desc(projects.createdAt)],
-        with: { manager: true, creator: true }
+        with: { managers: { with: { manager: true } }, creator: true }
       });
     }
 
@@ -82,6 +88,7 @@ export async function getProjectAction(projectId: string) {
         eq(projects.orgId, orgId)
       ),
       with: {
+        managers: { with: { manager: true } },
         manager: true,
         creator: true,
         tasks: {
@@ -105,7 +112,7 @@ export async function getProjectAction(projectId: string) {
     const isHighRole = userProfile && ['Patron', 'Genel Müdür', 'Admin'].includes(userProfile.role);
     
     if (!isHighRole) {
-      const isManager = project.managerId === userId;
+      const isManager = project.managerId === userId || !!project.managers?.find((pm: any) => pm.managerId === userId);
       const hasAssignedTask = project.tasks.some(t => t.assigneeId === userId);
       
       if (!isManager && !hasAssignedTask) {
@@ -134,7 +141,7 @@ export async function createProjectAction(params: {
   name: string,
   description?: string,
   color?: string,
-  managerId?: string,
+  managerIds?: string[],
   budget?: number,
   cellId?: string, 
   attachment?: { url: string, name: string, size?: number, type?: string }
@@ -159,7 +166,7 @@ export async function createProjectAction(params: {
       orgId: orgId,
       cellId: params.cellId || null, // Hücre ataması (BUG FIX: Açıkça null kontrolü)
       createdBy: userId,
-      managerId: params.managerId || userId,
+      managerId: params.managerIds && params.managerIds.length > 0 ? params.managerIds[0] : userId, // Geriye dönük uyumluluk için ilk PM veya kendisi
       budget: params.budget || 0,
       status: 'active'
     }).returning();
@@ -175,6 +182,36 @@ export async function createProjectAction(params: {
         fileType: params.attachment.type,
         createdBy: userId
       });
+    }
+
+    // Yeni Many-to-Many project_managers tablosuna eklemeleri yap
+    const managerIdsToInsert = params.managerIds && params.managerIds.length > 0 ? params.managerIds : [userId];
+    const projectManagersData = managerIdsToInsert.map(mId => ({
+      projectId: projectId,
+      managerId: mId
+    }));
+    // @ts-ignore - projectManagers schema export is needed
+    const { projectManagers } = await import('@/db/schema');
+    await db.insert(projectManagers).values(projectManagersData);
+
+    // Yöneticilere e-posta gönder
+    try {
+      const client = await clerkClient();
+      for (const mId of managerIdsToInsert) {
+         if (mId === userId) continue; // Kendisine mail atmasın
+         const managerUser = await client.users.getUser(mId);
+         const managerEmail = managerUser.emailAddresses[0]?.emailAddress;
+         if (managerEmail) {
+           sendTaskAssignmentEmail(
+             managerEmail,
+             `Yeni Bir Projede Yönetici Olarak Atandınız`,
+             params.name,
+             managerUser.fullName || managerUser.firstName || managerEmail.split('@')[0]
+           );
+         }
+      }
+    } catch(err) {
+      console.log('PM mail gönderme hatası:', err);
     }
 
     return { success: true, project: newProject };
@@ -329,25 +366,38 @@ export async function addProjectAttachmentAction(params: {
       createdBy: userId
     }).returning();
 
-    // ── Email Bildirimi (Manager'a) ──
+    // ── Email Bildirimi (Managers'lara) ──
     try {
         const project = await db.query.projects.findFirst({
-            where: eq(projects.id, params.projectId)
+            where: eq(projects.id, params.projectId),
+            with: { managers: true }
         });
 
-        if (project && project.managerId && project.managerId !== userId) {
+        if (project && project.managers && project.managers.length > 0) {
+            const client = await clerkClient();
+            for (const pm of project.managers) {
+                if (pm.managerId === userId) continue; 
+                
+                const manager = await client.users.getUser(pm.managerId);
+                const managerEmail = manager.emailAddresses[0]?.emailAddress;
+
+                if (managerEmail) {
+                    sendProjectAttachmentNotificationEmail(
+                        managerEmail,
+                        manager.fullName || 'Sayın Yöneticimiz',
+                        project.name,
+                        params.fileName,
+                        user.firstName || user.emailAddresses[0].emailAddress.split('@')[0]
+                    ).catch(e => console.error("PM NOTIF ERROR:", e));
+                }
+            }
+        } else if (project && project.managerId && project.managerId !== userId) {
+            // Fallback (eski tekli PM için)
             const client = await clerkClient();
             const manager = await client.users.getUser(project.managerId);
             const managerEmail = manager.emailAddresses[0]?.emailAddress;
-
             if (managerEmail) {
-                sendProjectAttachmentNotificationEmail(
-                    managerEmail,
-                    manager.fullName || 'Sayın Yöneticimiz',
-                    project.name,
-                    params.fileName,
-                    user.firstName || user.emailAddresses[0].emailAddress.split('@')[0]
-                ).catch(e => console.error("PM NOTIF ERROR:", e));
+                 sendProjectAttachmentNotificationEmail(managerEmail, manager.fullName || 'Sayın Yöneticimiz', project.name, params.fileName, user.firstName || user.emailAddresses[0].emailAddress.split('@')[0]).catch(e => console.error("PM NOTIF ERROR:", e));
             }
         }
     } catch (e) {

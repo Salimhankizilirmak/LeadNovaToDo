@@ -11,6 +11,7 @@ import {
   Boxes,
   LogOut,
   Loader2,
+  Settings2,
 } from 'lucide-react';
 import { useUser, useClerk } from '@clerk/nextjs';
 

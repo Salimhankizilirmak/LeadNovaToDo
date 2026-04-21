@@ -52,7 +52,10 @@ export default function ProjectDetailView({
   /* ── Yetki Kontrolleri ─────────────────────────────────────── */
   const myRole = user?.publicMetadata?.role as string;
   const isHighRole = ['Patron', 'Genel Müdür', 'Admin'].includes(myRole);
-  const isProjectManager = initialProject.managerId === user?.id;
+  
+  const isProjectManager = initialProject.managerId === user?.id || 
+       (initialProject.managers && initialProject.managers.some((pm: any) => pm.managerId === user?.id));
+
   const canManageTasks = isHighRole || isProjectManager;
 
   const handleUpdateTaskStatus = async (taskId: string, newStatus: string) => {
@@ -94,12 +97,31 @@ export default function ProjectDetailView({
             <ChevronRight size={14} />
             <span className="text-gray-900">{initialProject.name}</span>
           </div>
-          <div className="flex items-center gap-3">
+           <div className="flex items-center gap-3">
              <div className="w-1.5 h-8 rounded-full" style={{ backgroundColor: initialProject.color }} />
              <h1 className="text-2xl font-black text-gray-900 tracking-tight">
                {initialProject.name}
              </h1>
           </div>
+          {initialProject.managers && initialProject.managers.length > 0 && (
+             <div className="flex items-center gap-2 mt-1">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Yöneticiler:</span>
+                <div className="flex -space-x-2 overflow-hidden">
+                   {initialProject.managers.map((pm: any, idx: number) => (
+                      <div key={idx} title={pm.manager?.fullName || 'Yönetici'} className="inline-block w-6 h-6 rounded-full border-2 border-white bg-indigo-100 flex-shrink-0 flex items-center justify-center relative overflow-hidden">
+                         {pm.manager?.avatarUrl ? (
+                           // eslint-disable-next-line @next/next/no-img-element
+                           <img src={pm.manager?.avatarUrl} alt="PM" className="w-full h-full object-cover" />
+                         ) : (
+                           <span className="text-[10px] font-bold text-indigo-700">
+                              {(pm.manager?.fullName || 'Y')[0]}
+                           </span>
+                         )}
+                      </div>
+                   ))}
+                </div>
+             </div>
+          )}
         </div>
 
         {/* Tabs & Add Task */}

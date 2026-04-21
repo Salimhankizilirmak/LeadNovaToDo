@@ -1,3 +1,7 @@
+'use server';
+
+import { db } from '@/db';
+import { auth, clerkClient } from '@clerk/nextjs/server';
 import { tasks, projects, profiles, taskAttachments, taskHistory, cellMembers } from '@/db/schema';
 import { eq, and, desc, or, inArray } from 'drizzle-orm';
 import { sendTaskAssignmentEmail } from '@/lib/email';
@@ -288,11 +292,11 @@ export async function getDashboardDataAction() {
         whereClause = eq(tasks.orgId, orgId);
     } else if (role === 'Vardiya Amiri') {
         const cellProjects = await db.select({ id: projects.id }).from(projects).where(inArray(projects.cellId, supervisedCellIds));
-        const projectIds = cellProjects.map(p => p.id);
+        const projectIds = cellProjects.map((p: any) => p.id);
         whereClause = and(eq(tasks.orgId, orgId), or(eq(tasks.assigneeId, userId), projectIds.length > 0 ? inArray(tasks.projectId, projectIds) : undefined));
     } else if (role === 'Proje Yöneticisi') {
         const managedProjects = await db.select({ id: projects.id }).from(projects).where(eq(projects.managerId, userId));
-        const projectIds = managedProjects.map(p => p.id);
+        const projectIds = managedProjects.map((p: any) => p.id);
         whereClause = and(eq(tasks.orgId, orgId), or(eq(tasks.assigneeId, userId), projectIds.length > 0 ? inArray(tasks.projectId, projectIds) : undefined));
     } else {
         whereClause = and(eq(tasks.orgId, orgId), eq(tasks.assigneeId, userId));
@@ -320,9 +324,9 @@ export async function getDashboardDataAction() {
 
     const stats = {
       total: allFilteredTasks.length,
-      completed: allFilteredTasks.filter(t => t.status === 'done').length,
-      pending: allFilteredTasks.filter(t => t.status !== 'done').length,
-      critical: allFilteredTasks.filter(t => t.priority === 'critical').length,
+      completed: allFilteredTasks.filter((t: any) => t.status === 'done').length,
+      pending: allFilteredTasks.filter((t: any) => t.status !== 'done').length,
+      critical: allFilteredTasks.filter((t: any) => t.priority === 'critical').length,
     };
 
     return { success: true, tasks: recentTasks, stats };

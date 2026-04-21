@@ -1,3 +1,8 @@
+'use server';
+
+import { db } from '@/db';
+import { tasks, projects, cells, taskHistory, projectManagers } from '@/db/schema';
+import { eq, and, or, inArray, sql } from 'drizzle-orm';
 import { getAuthContext, isBoss, getSupervisedCellIds } from '@/lib/auth-utils';
 
 /**
@@ -21,7 +26,7 @@ export async function getAnalyticsAction() {
         }).from(tasks).where(eq(tasks.orgId, orgId)).groupBy(tasks.status);
     } else if (role === 'Vardiya Amiri') {
         const cellProjects = await db.select({ id: projects.id }).from(projects).where(inArray(projects.cellId, supervisedCellIds));
-        const projectIds = cellProjects.map(p => p.id);
+        const projectIds = cellProjects.map((p: any) => p.id);
         
         statsQuery = db.select({
             status: tasks.status,
@@ -36,8 +41,8 @@ export async function getAnalyticsAction() {
             )
         ).groupBy(tasks.status);
     } else if (role === 'Proje Yöneticisi') {
-        const myProjects = await db.select({ id: projects.id }).from(projects).where(eq(projects.managerId, userId));
-        const projectIds = myProjects.map(p => p.id);
+        const myProjects = await db.select({ id: projectManagers.projectId }).from(projectManagers).where(eq(projectManagers.managerId, userId));
+        const projectIds = myProjects.map((p: any) => p.id);
         
         statsQuery = db.select({
             status: tasks.status,
@@ -74,9 +79,9 @@ export async function getAnalyticsAction() {
             }
         });
 
-        cellPerformance = cellsData.map(c => {
-            const allTasks = c.projects.flatMap(p => p.tasks);
-            const doneCount = allTasks.filter(t => t.status === 'done').length;
+        cellPerformance = cellsData.map((c: any) => {
+            const allTasks = c.projects.flatMap((p: any) => p.tasks);
+            const doneCount = allTasks.filter((t: any) => t.status === 'done').length;
             return {
                 name: c.name,
                 total: allTasks.length,
@@ -89,8 +94,18 @@ export async function getAnalyticsAction() {
     // 3. Bütçe Dağılımı (Sadece Patron/GM/PM)
     let budgetData: any[] = [];
     if (isGlobalManager || role === 'Proje Yöneticisi') {
+        // Eğer global manager değilse sadece kendi bağlı oldukları (projectManagers'tan subquery ile de yapılabilirdi, getProjectsAction mantığıyla inArray kullanıyoruz)
+        let budgetWhere;
+        if (isGlobalManager) {
+            budgetWhere = eq(projects.orgId, orgId);
+        } else {
+            const pmRels = await db.select({ pid: projectManagers.projectId }).from(projectManagers).where(eq(projectManagers.managerId, userId));
+            const pmIds = pmRels.map(r => r.pid);
+            budgetWhere = and(eq(projects.orgId, orgId), pmIds.length > 0 ? inArray(projects.id, pmIds) : sql`1=0`);
+        }
+
         const projectsData = await db.query.projects.findMany({
-            where: isGlobalManager ? eq(projects.orgId, orgId) : and(eq(projects.orgId, orgId), eq(projects.managerId, userId)),
+            where: budgetWhere,
             columns: {
                 name: true,
                 budget: true
@@ -143,8 +158,8 @@ export async function getExcelDataAction() {
             const projectIds = cellProjects.map(p => p.id);
             whereClause = and(eq(tasks.orgId, orgId), or(eq(tasks.assigneeId, userId), projectIds.length > 0 ? inArray(tasks.projectId, projectIds) : undefined));
         } else if (role === 'Proje Yöneticisi') {
-            const managedProjects = await db.select({ id: projects.id }).from(projects).where(eq(projects.managerId, userId));
-            const projectIds = managedProjects.map(p => p.id);
+            const managedProjects = await db.select({ id: projectManagers.projectId }).from(projectManagers).where(eq(projectManagers.managerId, userId));
+            const projectIds = managedProjects.map((p: any) => p.id);
             whereClause = and(eq(tasks.orgId, orgId), or(eq(tasks.assigneeId, userId), projectIds.length > 0 ? inArray(tasks.projectId, projectIds) : undefined));
         }
 
@@ -160,7 +175,7 @@ export async function getExcelDataAction() {
         });
 
         // Tamamlanma tarihi için task_history'den 'done' durumuna geçtiği anı bul
-        const doneTaskIds = rawTasks.filter(t => t.status === 'done').map(t => t.id);
+        const doneTaskIds = rawTasks.filter((t: any) => t.status === 'done').map((t: any) => t.id);
         const completionDates: Record<string, string> = {};
         
         if (doneTaskIds.length > 0) {
@@ -170,14 +185,14 @@ export async function getExcelDataAction() {
                     eq(taskHistory.newStatus, 'done')
                  )
             });
-            histories.forEach(h => {
+            histories.forEach((h: any) => {
                 if (!completionDates[h.taskId] || new Date(h.createdAt || 0) > new Date(completionDates[h.taskId])) {
                     completionDates[h.taskId] = h.createdAt ? new Date(h.createdAt).toLocaleString('tr-TR') : '-';
                 }
             });
         }
 
-        const formattedData = rawTasks.map(t => ({
+        const formattedData = rawTasks.map((t: any) => ({
             "Görev Başlığı": t.title,
             "Atanan Personel": t.assignee?.fullName || 'Atanmamış',
             "Departman (Hücre)": t.project?.cell?.name || 'Tanımsız',

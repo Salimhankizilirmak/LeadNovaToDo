@@ -36,7 +36,7 @@ const COLOR_OPTIONS = [
 const schema = z.object({
   name: z.string().min(3, 'Proje adı en az 3 karakter olmalıdır').max(80),
   description: z.string().max(300).optional(),
-  managerId: z.string().optional().nullable(),
+  managerIds: z.array(z.string()).optional(),
   cellId: z.string().min(1, 'Lütfen bir departman/hücre seçiniz'), // Zorunlu
   budget: z.number().optional().nullable(),
 });
@@ -57,6 +57,7 @@ export default function CreateProjectModal({
   const userId = user?.id ?? null;
   const [selectedColor, setSelectedColor] = useState(COLOR_OPTIONS[0].hex);
   const [submitting, setSubmitting] = useState(false);
+  const [selectedManagerIds, setSelectedManagerIds] = useState<string[]>([]);
   const [members, setMembers] = useState<any[]>([]);
   const [cells, setCells] = useState<any[]>([]);
   const [attachment, setAttachment] = useState<{ url: string, name: string, size?: number, type?: string } | null>(null);
@@ -69,7 +70,7 @@ export default function CreateProjectModal({
   } = useForm<FormValues>({ 
     resolver: zodResolver(schema),
     defaultValues: {
-      managerId: null,
+      managerIds: [],
       cellId: ''
     }
   });
@@ -101,7 +102,7 @@ export default function CreateProjectModal({
         name: values.name,
         description: values.description,
         color: selectedColor,
-        managerId: values.managerId || undefined,
+        managerIds: selectedManagerIds,
         cellId: values.cellId,
         budget: values.budget ? Math.round(values.budget * 100) : 0,
         attachment: attachment || undefined
@@ -183,22 +184,38 @@ export default function CreateProjectModal({
             )}
           </div>
 
-          {/* Sorumlu Personel */}
+          {/* Sorumlu Personeller (Multi-Select) */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-              Projeden Sorumlu Personel
+              Projeden Sorumlu Yöneticiler
             </label>
-            <select
-              {...register('managerId')}
-              className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 bg-gray-50 text-gray-900 outline-none focus:border-indigo-400 focus:bg-white transition-colors cursor-pointer"
-            >
-              <option value="">Sorumlu seçilmedi</option>
-              {members.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.fullName} ({m.email?.split('@')[0]})
-                </option>
-              ))}
-            </select>
+            <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl max-h-40 overflow-y-auto space-y-2">
+              {members.filter(m => m.role !== 'Patron' && m.role !== 'Genel Müdür').map((m) => {
+                const isSelected = selectedManagerIds.includes(m.id);
+                return (
+                  <label key={m.id} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all ${isSelected ? 'bg-indigo-100 text-indigo-900 shadow-sm border border-indigo-200' : 'hover:bg-gray-100 text-gray-700 border border-transparent'}`}>
+                    <input
+                      type="checkbox"
+                      className="hidden"
+                      checked={isSelected}
+                      onChange={() => {
+                        setSelectedManagerIds(prev =>
+                          isSelected ? prev.filter(id => id !== m.id) : [...prev, m.id]
+                        );
+                      }}
+                    />
+                    <div className={`w-4 h-4 rounded appearance-none border flex items-center justify-center transition-colors ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300'}`}>
+                       {isSelected && <FileCheck size={12} className="text-white" />}
+                    </div>
+                    <span className="text-sm font-medium flex-1 truncate">{m.fullName || m.email?.split('@')[0]}</span>
+                    <span className="text-[10px] font-bold bg-white/50 px-2 py-0.5 rounded opacity-70 uppercase truncate max-w-[80px]">{m.role}</span>
+                  </label>
+                );
+              })}
+              {members.filter(m => m.role !== 'Patron' && m.role !== 'Genel Müdür').length === 0 && (
+                <p className="text-xs text-gray-500 italic text-center py-2">Atanabilecek yönetici bulunamadı.</p>
+              )}
+            </div>
           </div>
 
           {/* Bütçe (TRY) */}
