@@ -100,12 +100,12 @@ export default function CreateTaskModal({
       className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="w-full max-w-sm sm:max-w-md bg-white rounded-[2rem] shadow-2xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in duration-200">
+      <div className="w-full h-full sm:h-auto sm:max-w-md bg-white sm:rounded-[2rem] rounded-none shadow-2xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-50 flex-shrink-0">
           <div className="flex items-center gap-2">
             <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600">
-               <ClipboardCheck size={18} />
+              <ClipboardCheck size={18} />
             </div>
             <h2 className="text-sm sm:text-base font-black text-gray-900 tracking-tight">Yeni Görev</h2>
           </div>
@@ -118,7 +118,7 @@ export default function CreateTaskModal({
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit(onSubmit)} className="p-5 sm:p-7 space-y-6">
+        <form onSubmit={handleSubmit(onSubmit)} className="p-5 sm:p-7 space-y-6 flex-1 overflow-y-auto">
           <div className="space-y-2">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">
               Görev Başlığı
@@ -127,11 +127,10 @@ export default function CreateTaskModal({
               {...register('title')}
               autoFocus
               placeholder="Örn: Tasarım yapılacak"
-              className={`w-full px-4 py-3 text-sm rounded-xl border bg-gray-50 text-gray-900 placeholder-gray-300 outline-none transition-all focus:bg-white focus:ring-4 focus:ring-indigo-500/5 ${
-                errors.title
+              className={`w-full px-4 py-3 text-sm rounded-xl border bg-gray-50 text-gray-900 placeholder-gray-300 outline-none transition-all focus:bg-white focus:ring-4 focus:ring-indigo-500/5 ${errors.title
                   ? 'border-red-400 focus:border-red-400'
                   : 'border-gray-100 focus:border-indigo-400'
-              }`}
+                }`}
             />
             {errors.title && (
               <p className="text-xs text-red-500 mt-1 ml-1 font-medium">
@@ -139,7 +138,7 @@ export default function CreateTaskModal({
               </p>
             )}
           </div>
-          
+
           <div className="space-y-2">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">
               Açıklama (Opsiyonel)
@@ -216,7 +215,7 @@ export default function CreateTaskModal({
               </select>
             </div>
           </div>
-          
+
           <div className="space-y-2">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">
               Bitiş Tarihi (Opsiyonel)
@@ -230,50 +229,50 @@ export default function CreateTaskModal({
 
           {/* Görev Eki (Optional) */}
           <div className="p-4 bg-gray-50 rounded-2xl border border-dashed border-gray-100">
-             <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <Paperclip size={14} className="text-gray-400" />
-                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Görev Materyali</span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Paperclip size={14} className="text-gray-400" />
+                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Görev Materyali</span>
+              </div>
+              {!attachment ? (
+                <UploadButton
+                  endpoint="taskAttachment"
+                  onClientUploadComplete={(res) => {
+                    if (res) {
+                      setAttachment({
+                        url: res[0].url,
+                        name: res[0].name,
+                        size: res[0].size,
+                        type: res[0].type
+                      });
+                      toast.success('Materyal yüklendi!');
+                    }
+                  }}
+                  appearance={{
+                    button: "text-[10px] font-black bg-white text-indigo-600 px-3 py-1.5 rounded-lg border border-indigo-100 hover:bg-indigo-50 transition-all h-auto",
+                    allowedContent: "hidden"
+                  }}
+                  content={{
+                    button: ({ ready }) => ready ? "YÜKLE" : "..."
+                  }}
+                />
+              ) : (
+                <div className="flex items-center gap-2 text-emerald-600">
+                  <FileCheck size={14} />
+                  <span className="text-[9px] font-black uppercase">Tamam</span>
+                  <button
+                    type="button"
+                    onClick={() => setAttachment(null)}
+                    className="text-[9px] text-red-500 font-bold hover:underline"
+                  >
+                    SİL
+                  </button>
                 </div>
-                {!attachment ? (
-                    <UploadButton
-                        endpoint="taskAttachment"
-                        onClientUploadComplete={(res) => {
-                            if (res) {
-                                setAttachment({
-                                    url: res[0].url,
-                                    name: res[0].name,
-                                    size: res[0].size,
-                                    type: res[0].type
-                                });
-                                toast.success('Materyal yüklendi!');
-                            }
-                        }}
-                        appearance={{
-                            button: "text-[10px] font-black bg-white text-indigo-600 px-3 py-1.5 rounded-lg border border-indigo-100 hover:bg-indigo-50 transition-all h-auto",
-                            allowedContent: "hidden"
-                        }}
-                        content={{
-                            button: ({ ready }) => ready ? "YÜKLE" : "..."
-                        }}
-                    />
-                ) : (
-                    <div className="flex items-center gap-2 text-emerald-600">
-                        <FileCheck size={14} />
-                        <span className="text-[9px] font-black uppercase">Tamam</span>
-                        <button 
-                            type="button"
-                            onClick={() => setAttachment(null)}
-                            className="text-[9px] text-red-500 font-bold hover:underline"
-                        >
-                            SİL
-                        </button>
-                    </div>
-                )}
-             </div>
-             {attachment && (
-                 <p className="mt-2 text-[9px] text-gray-400 font-bold truncate tracking-tight">{attachment.name}</p>
-             )}
+              )}
+            </div>
+            {attachment && (
+              <p className="mt-2 text-[9px] text-gray-400 font-bold truncate tracking-tight">{attachment.name}</p>
+            )}
           </div>
 
 

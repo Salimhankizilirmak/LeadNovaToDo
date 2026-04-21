@@ -134,7 +134,7 @@ export const tasksRelations = relations(tasks, ({ one, many }) => ({
     references: [blocks.id],
   }),
   assignee: one(profiles, {
-fields: [tasks.assigneeId],
+    fields: [tasks.assigneeId],
     references: [profiles.id],
     relationName: 'assignee',
   }),
@@ -173,7 +173,7 @@ export const taskHistory = sqliteTable('task_history', {
   changedBy: text('changed_by').notNull().references(() => profiles.id),
   actionType: text('action_type').notNull().default('status_change'), // 'status_change', 'priority_change', 'assignee_change', 'attachment_added', 'update_details'
   oldStatus: text('old_status'),
-  newStatus: text('new_status'), 
+  newStatus: text('new_status'),
   details: text('details'), // Opsiyonel ekstra açıklamalar (JSON veya Text)
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
 });
@@ -296,7 +296,7 @@ export const projectAttachmentsRelations = relations(projectAttachments, ({ one 
 export const blocks = sqliteTable('blocks', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
-  cellId: text('cell_id').notNull().references(() => cells.id),
+  cellId: text('cell_id').references(() => cells.id),
   orgId: text('org_id').notNull().references(() => organizations.id),
   createdBy: text('created_by').notNull().references(() => profiles.id),
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),

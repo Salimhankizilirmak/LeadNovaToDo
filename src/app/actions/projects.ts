@@ -29,11 +29,11 @@ export async function getProjectsAction(limit = 20) {
     } else if (role === 'Vardiya Amiri') {
       const cellIds = await getSupervisedCellIds(userId);
       if (cellIds.length === 0) return { success: true, projects: [] };
-      
+
       data = await db.query.projects.findMany({
         where: and(
-            eq(projects.orgId, orgId),
-            inArray(projects.cellId, cellIds)
+          eq(projects.orgId, orgId),
+          inArray(projects.cellId, cellIds)
         ),
         limit: limit,
         orderBy: [desc(projects.createdAt)],
@@ -108,13 +108,13 @@ export async function getProjectAction(projectId: string) {
     const userProfile = await db.query.profiles.findFirst({
       where: eq(profiles.id, userId)
     });
-    
+
     const isHighRole = userProfile && ['Patron', 'Genel Müdür', 'Admin'].includes(userProfile.role);
-    
+
     if (!isHighRole) {
       const isManager = project.managerId === userId || !!project.managers?.find((pm: any) => pm.managerId === userId);
       const hasAssignedTask = project.tasks.some(t => t.assigneeId === userId);
-      
+
       if (!isManager && !hasAssignedTask) {
         // Yetkisiz erişim
         return { success: false, error: 'Bu projeye erişim yetkiniz yok.', status: 403 };
@@ -143,7 +143,7 @@ export async function createProjectAction(params: {
   color?: string,
   managerIds?: string[],
   budget?: number,
-  cellId?: string, 
+  cellId?: string,
   attachment?: { url: string, name: string, size?: number, type?: string }
 }) {
 
@@ -154,7 +154,7 @@ export async function createProjectAction(params: {
 
     // Yetki Kontrolü: Sadece Patron, GM ve Admin proje oluşturabilir.
     if (!isBoss(role)) {
-        return { success: false, error: 'Proje oluşturma yetkiniz bulunmamaktadır.' };
+      return { success: false, error: 'Proje oluşturma yetkiniz bulunmamaktadır.' };
     }
 
     const projectId = crypto.randomUUID();
@@ -198,19 +198,19 @@ export async function createProjectAction(params: {
     try {
       const client = await clerkClient();
       for (const mId of managerIdsToInsert) {
-         if (mId === userId) continue; // Kendisine mail atmasın
-         const managerUser = await client.users.getUser(mId);
-         const managerEmail = managerUser.emailAddresses[0]?.emailAddress;
-         if (managerEmail) {
-           sendTaskAssignmentEmail(
-             managerEmail,
-             `Yeni Bir Projede Yönetici Olarak Atandınız`,
-             params.name,
-             managerUser.fullName || managerUser.firstName || managerEmail.split('@')[0]
-           );
-         }
+        if (mId === userId) continue; // Kendisine mail atmasın
+        const managerUser = await client.users.getUser(mId);
+        const managerEmail = managerUser.emailAddresses[0]?.emailAddress;
+        if (managerEmail) {
+          sendTaskAssignmentEmail(
+            managerEmail,
+            `Yeni Bir Projede Yönetici Olarak Atandınız`,
+            params.name,
+            managerUser.fullName || managerUser.firstName || managerEmail.split('@')[0]
+          );
+        }
       }
-    } catch(err) {
+    } catch (err) {
       console.log('PM mail gönderme hatası:', err);
     }
 
@@ -252,41 +252,41 @@ export async function getCellsAction() {
 
     let cellsQuery;
     if (isBoss(role)) {
-       cellsQuery = db.query.cells.findMany({
-         where: eq(cells.orgId, orgId),
-         orderBy: [desc(cells.createdAt)],
-         with: {
-           members: true,
-           blocks: { with: { tasks: { where: (tasks, { ne }) => ne(tasks.status, 'done'), with: { assignee: true } } } },
-           projects: { with: { tasks: { where: (tasks, { ne }) => ne(tasks.status, 'done'), with: { assignee: true } } } }
-         }
-       });
+      cellsQuery = db.query.cells.findMany({
+        where: eq(cells.orgId, orgId),
+        orderBy: [desc(cells.createdAt)],
+        with: {
+          members: true,
+          blocks: { with: { tasks: { where: (tasks, { ne }) => ne(tasks.status, 'done'), with: { assignee: true } } } },
+          projects: { with: { tasks: { where: (tasks, { ne }) => ne(tasks.status, 'done'), with: { assignee: true } } } }
+        }
+      });
     } else if (role === 'Vardiya Amiri') {
-       const supervisedCellIds = await getSupervisedCellIds(userId);
-       if (supervisedCellIds.length === 0) return { success: true, cells: [] };
-       
-       cellsQuery = db.query.cells.findMany({
-         where: and(eq(cells.orgId, orgId), inArray(cells.id, supervisedCellIds)),
-         with: {
-           members: true,
-           blocks: { with: { tasks: { where: (tasks, { ne }) => ne(tasks.status, 'done'), with: { assignee: true } } } },
-           projects: { with: { tasks: { where: (tasks, { ne }) => ne(tasks.status, 'done'), with: { assignee: true } } } }
-         }
-       });
-    } else {
-       // Personel veya PM: Sadece dahil olduğu hücreleri gör
-       const memberships = await db.query.cellMembers.findMany({ where: eq(cellMembers.userId, userId) });
-       const myCellIds = memberships.map(m => m.cellId);
-       if (myCellIds.length === 0) return { success: true, cells: [] };
+      const supervisedCellIds = await getSupervisedCellIds(userId);
+      if (supervisedCellIds.length === 0) return { success: true, cells: [] };
 
-       cellsQuery = db.query.cells.findMany({
-         where: inArray(cells.id, myCellIds),
-         with: {
-           members: true,
-           blocks: { with: { tasks: { where: (tasks, { ne }) => ne(tasks.status, 'done'), with: { assignee: true } } } },
-           projects: { with: { tasks: { where: (tasks, { ne }) => ne(tasks.status, 'done'), with: { assignee: true } } } }
-         }
-       });
+      cellsQuery = db.query.cells.findMany({
+        where: and(eq(cells.orgId, orgId), inArray(cells.id, supervisedCellIds)),
+        with: {
+          members: true,
+          blocks: { with: { tasks: { where: (tasks, { ne }) => ne(tasks.status, 'done'), with: { assignee: true } } } },
+          projects: { with: { tasks: { where: (tasks, { ne }) => ne(tasks.status, 'done'), with: { assignee: true } } } }
+        }
+      });
+    } else {
+      // Personel veya PM: Sadece dahil olduğu hücreleri gör
+      const memberships = await db.query.cellMembers.findMany({ where: eq(cellMembers.userId, userId) });
+      const myCellIds = memberships.map(m => m.cellId);
+      if (myCellIds.length === 0) return { success: true, cells: [] };
+
+      cellsQuery = db.query.cells.findMany({
+        where: inArray(cells.id, myCellIds),
+        with: {
+          members: true,
+          blocks: { with: { tasks: { where: (tasks, { ne }) => ne(tasks.status, 'done'), with: { assignee: true } } } },
+          projects: { with: { tasks: { where: (tasks, { ne }) => ne(tasks.status, 'done'), with: { assignee: true } } } }
+        }
+      });
     }
 
     const cellsWithStats = await cellsQuery;
@@ -299,7 +299,7 @@ export async function getCellsAction() {
         task_stats: {
           total: allTasks.length,
           active: allTasks.length,
-          done: 0 
+          done: 0
         }
       };
     });
@@ -321,7 +321,7 @@ export async function createCellAction(name: string, description?: string) {
     const { userId, orgId, role } = authCtx;
 
     if (!isBoss(role)) {
-        return { success: false, error: 'Hücre oluşturma yetkiniz bulunmamaktadır.' };
+      return { success: false, error: 'Hücre oluşturma yetkiniz bulunmamaktadır.' };
     }
 
     const cellId = crypto.randomUUID();
@@ -368,45 +368,109 @@ export async function addProjectAttachmentAction(params: {
 
     // ── Email Bildirimi (Managers'lara) ──
     try {
-        const project = await db.query.projects.findFirst({
-            where: eq(projects.id, params.projectId),
-            with: { managers: true }
-        });
+      const project = await db.query.projects.findFirst({
+        where: eq(projects.id, params.projectId),
+        with: { managers: true }
+      });
 
-        if (project && project.managers && project.managers.length > 0) {
-            const client = await clerkClient();
-            for (const pm of project.managers) {
-                if (pm.managerId === userId) continue; 
-                
-                const manager = await client.users.getUser(pm.managerId);
-                const managerEmail = manager.emailAddresses[0]?.emailAddress;
+      if (project && project.managers && project.managers.length > 0) {
+        const client = await clerkClient();
+        for (const pm of project.managers) {
+          if (pm.managerId === userId) continue;
 
-                if (managerEmail) {
-                    sendProjectAttachmentNotificationEmail(
-                        managerEmail,
-                        manager.fullName || 'Sayın Yöneticimiz',
-                        project.name,
-                        params.fileName,
-                        user.firstName || user.emailAddresses[0].emailAddress.split('@')[0]
-                    ).catch(e => console.error("PM NOTIF ERROR:", e));
-                }
-            }
-        } else if (project && project.managerId && project.managerId !== userId) {
-            // Fallback (eski tekli PM için)
-            const client = await clerkClient();
-            const manager = await client.users.getUser(project.managerId);
-            const managerEmail = manager.emailAddresses[0]?.emailAddress;
-            if (managerEmail) {
-                 sendProjectAttachmentNotificationEmail(managerEmail, manager.fullName || 'Sayın Yöneticimiz', project.name, params.fileName, user.firstName || user.emailAddresses[0].emailAddress.split('@')[0]).catch(e => console.error("PM NOTIF ERROR:", e));
-            }
+          const manager = await client.users.getUser(pm.managerId);
+          const managerEmail = manager.emailAddresses[0]?.emailAddress;
+
+          if (managerEmail) {
+            sendProjectAttachmentNotificationEmail(
+              managerEmail,
+              manager.fullName || 'Sayın Yöneticimiz',
+              project.name,
+              params.fileName,
+              user.firstName || user.emailAddresses[0].emailAddress.split('@')[0]
+            ).catch(e => console.error("PM NOTIF ERROR:", e));
+          }
         }
+      } else if (project && project.managerId && project.managerId !== userId) {
+        // Fallback (eski tekli PM için)
+        const client = await clerkClient();
+        const manager = await client.users.getUser(project.managerId);
+        const managerEmail = manager.emailAddresses[0]?.emailAddress;
+        if (managerEmail) {
+          sendProjectAttachmentNotificationEmail(managerEmail, manager.fullName || 'Sayın Yöneticimiz', project.name, params.fileName, user.firstName || user.emailAddresses[0].emailAddress.split('@')[0]).catch(e => console.error("PM NOTIF ERROR:", e));
+        }
+      }
     } catch (e) {
-        console.error("ATTACHMENT MAIL PROCESS ERROR:", e);
+      console.error("ATTACHMENT MAIL PROCESS ERROR:", e);
     }
 
     return { success: true, attachment };
   } catch (err: any) {
     console.error('PROJE EKLERİ KAYIT HATASI:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Hücre bilgilerini günceller.
+ */
+export async function updateCellAction(cellId: string, name: string, description?: string) {
+  try {
+    const authCtx = await getAuthContext();
+    if (!authCtx) return { success: false, error: 'Oturum bulunamadı.' };
+    const { userId, orgId, role } = authCtx;
+
+    if (!isBoss(role)) {
+      return { success: false, error: 'Hücre düzenleme yetkiniz bulunmamaktadır.' };
+    }
+
+    const [updatedCell] = await db.update(cells)
+      .set({ name, description: description || null })
+      .where(and(eq(cells.id, cellId), eq(cells.orgId, orgId)))
+      .returning();
+
+    if (!updatedCell) return { success: false, error: 'Hücre bulunamadı veya yetkiniz yok.' };
+
+    return { success: true, cell: updatedCell };
+  } catch (err: any) {
+    console.error('HÜCRE GÜNCELLENEMEDİ:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Hücreyi siler (Bağlı projelerin ve blokların cell_id'sini null yapar).
+ */
+export async function deleteCellAction(cellId: string) {
+  try {
+    const authCtx = await getAuthContext();
+    if (!authCtx) return { success: false, error: 'Oturum bulunamadı.' };
+    const { userId, orgId, role } = authCtx;
+
+    if (!isBoss(role)) {
+      return { success: false, error: 'Hücre silme yetkiniz bulunmamaktadır.' };
+    }
+
+    // İşlem (Transaction) ile güvenli silme
+    await db.transaction(async (tx) => {
+      // 1. Projelerdeki cellId'yi null yap
+      await tx.update(projects)
+        .set({ cellId: null })
+        .where(and(eq(projects.cellId, cellId), eq(projects.orgId, orgId)));
+
+      // 2. Bloklardaki cellId'yi null yap
+      await tx.update(blocks)
+        .set({ cellId: null })
+        .where(and(eq(blocks.cellId, cellId), eq(blocks.orgId, orgId)));
+
+      // 3. Hücreyi sil
+      await tx.delete(cells)
+        .where(and(eq(cells.id, cellId), eq(cells.orgId, orgId)));
+    });
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('HÜCRE SİLİNEMEDİ:', err);
     return { success: false, error: err.message };
   }
 }
