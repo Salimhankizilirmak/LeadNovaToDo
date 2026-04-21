@@ -159,9 +159,86 @@ export async function updateTaskStatusAction(taskId: string, newStatus: string) 
         id: crypto.randomUUID(),
         taskId,
         changedBy: userId,
+        actionType: 'status_change',
         oldStatus: existingTask.status,
-        newStatus: newStatus as any
+        newStatus: newStatus
     });
+
+    return { success: true, task: updatedTask };
+  } catch (err: any) {
+    console.error('Görev Statü Güncelleme Hatası:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Görev detaylarını (başlık, açıklama, öncelik, atanan kişi vb.) günceller ve geçmişe yazar.
+ */
+export async function updateTaskDetailsAction(taskId: string, params: {
+  title?: string,
+  description?: string,
+  priority?: string,
+  assigneeId?: string | null,
+  dueDate?: string | null
+}) {
+  try {
+    const authCtx = await getAuthContext();
+    if (!authCtx) return { success: false, error: 'Oturum bulunamadı.' };
+    const { userId, orgId, role } = authCtx;
+    
+    const existingTask = await db.query.tasks.findFirst({
+        where: and(eq(tasks.id, taskId), eq(tasks.orgId, orgId)),
+        with: { project: true }
+    });
+
+    if (!existingTask) return { success: false, error: 'Görev bulunamadı.' };
+
+    if (!isBoss(role)) {
+        const supervisedCellIds = await getSupervisedCellIds(userId);
+        const isAssignee = existingTask.assigneeId === userId;
+        const isProjectManager = existingTask.project?.managerId === userId;
+        const isCellSupervisor = existingTask.project?.cellId && supervisedCellIds.includes(existingTask.project.cellId);
+
+        if (!isAssignee && !isProjectManager && !isCellSupervisor) {
+            return { success: false, error: 'Bu görevi güncelleme yetkiniz yok.' };
+        }
+    }
+
+    const changes: any[] = [];
+    if (params.title !== undefined && params.title !== existingTask.title) {
+        changes.push({ actionType: 'update_details', details: `Başlık değiştirildi: ${params.title}` });
+    }
+    if (params.priority !== undefined && params.priority !== existingTask.priority) {
+        changes.push({ actionType: 'priority_change', oldStatus: existingTask.priority, newStatus: params.priority });
+    }
+    if (params.assigneeId !== undefined && params.assigneeId !== existingTask.assigneeId) {
+        changes.push({ actionType: 'assignee_change', oldStatus: existingTask.assigneeId || 'Yok', newStatus: params.assigneeId || 'Yok' });
+    }
+
+    const [updatedTask] = await db.update(tasks)
+      .set({ 
+        title: params.title !== undefined ? params.title : existingTask.title,
+        description: params.description !== undefined ? params.description : existingTask.description,
+        priority: params.priority !== undefined ? (params.priority as any) : existingTask.priority,
+        assigneeId: params.assigneeId !== undefined ? params.assigneeId : existingTask.assigneeId,
+        dueDate: params.dueDate !== undefined ? params.dueDate : existingTask.dueDate,
+      })
+      .where(eq(tasks.id, taskId))
+      .returning();
+
+    for (const change of changes) {
+        await db.insert(taskHistory).values({
+            id: crypto.randomUUID(),
+            taskId,
+            changedBy: userId,
+            actionType: change.actionType,
+            oldStatus: change.oldStatus,
+            newStatus: change.newStatus,
+            details: change.details
+        });
+    }
+
+    return { success: true, task: updatedTask };
 
     return { success: true, task: updatedTask };
   } catch (err: any) {
@@ -273,6 +350,15 @@ export async function addTaskAttachmentAction(taskId: string, fileName: string, 
       fileType,
       createdBy: userId
     }).returning();
+
+    // 1. Geçmişe (Logs) kaydet: Dosya Yüklendi
+    await db.insert(taskHistory).values({
+        id: crypto.randomUUID(),
+        taskId,
+        changedBy: userId,
+        actionType: 'attachment_added',
+        details: `Dosya yüklendi: ${fileName}`
+    });
 
     return { success: true, attachment };
   } catch (err: any) {

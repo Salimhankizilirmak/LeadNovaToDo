@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { getAnalyticsAction, getExcelDataAction } from '@/app/actions/reports';
 import { exportToPdf, exportToExcel } from '@/lib/exportUtils';
+import Unauthorized from '@/components/layout/Unauthorized';
 
 const COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
 
@@ -36,6 +37,7 @@ export default function ReportsPage() {
   const [role, setRole] = useState<string>('Personel');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [unauthorized, setUnauthorized] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -46,8 +48,7 @@ export default function ReportsPage() {
             setRole(res.role);
             // Yetki Kontrolü: Personel raporlara erişemez (Sidebar'da da gizli)
             if (res.role === 'Personel') {
-                toast.error('Raporlar sayfasına erişim yetkiniz yok.');
-                window.location.href = '/dashboard';
+                setUnauthorized(true);
             }
         }
       } else {
@@ -57,6 +58,10 @@ export default function ReportsPage() {
     }
     load();
   }, []);
+
+  if (unauthorized) {
+      return <Unauthorized />;
+  }
 
   if (loading) {
     return (

@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { getOrgProfiles } from '@/app/actions/users';
 import TeamView from '@/components/team/TeamView';
 import { UserRole } from '@/types/task';
+import Unauthorized from '@/components/layout/Unauthorized';
 
 export default async function TeamPage() {
   const { userId, orgId, orgRole } = await auth();
@@ -26,7 +27,7 @@ export default async function TeamPage() {
 
   // Yetki Kontrolü: Sadece Patron, GM, Admin ve PM görebilir.
   if (!['Patron', 'Genel Müdür', 'Admin', 'Proje Yöneticisi'].includes(myIndustrialRole)) {
-    redirect('/dashboard');
+    return <Unauthorized />;
   }
 
   const isAdmin = orgRole === 'org:admin' || ['Patron', 'Genel Müdür', 'Admin'].includes(myIndustrialRole);

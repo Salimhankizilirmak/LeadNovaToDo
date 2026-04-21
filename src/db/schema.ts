@@ -150,8 +150,10 @@ export const taskHistory = sqliteTable('task_history', {
   id: text('id').primaryKey(),
   taskId: text('task_id').notNull().references(() => tasks.id),
   changedBy: text('changed_by').notNull().references(() => profiles.id),
+  actionType: text('action_type').notNull().default('status_change'), // 'status_change', 'priority_change', 'assignee_change', 'attachment_added', 'update_details'
   oldStatus: text('old_status'),
-  newStatus: text('new_status').notNull(),
+  newStatus: text('new_status'), 
+  details: text('details'), // Opsiyonel ekstra açıklamalar (JSON veya Text)
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
 });
 
